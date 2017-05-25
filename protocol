@@ -1,0 +1,39 @@
+Race Into Space network protocol
+================================
+
+Uses HTTP as an underlayer, and a simple RPC approach of GET variables and
+ JSON responses.  So for the most part, we can talk in terms of Python dicts.
+Dates are formatted as YYYY-MM-DD.  If two players achieve a first on the same
+ day, they both get the payout (if eligible).
+
+Sync Message
+------------
+/sync
+Required inputs: game.
+Optional inputs: player, date.
+Semantics: I have reached the given date, and all completions before that date
+ have already been notified.  (If date or player not given, then pure read.)
+Outputs: {player.name: {'date': player.date, 'leader': player.leader}
+          for player in game.players}
+
+Completion Message
+------------------
+/completed
+Required inputs: game, player, contract, date.
+Semantics: I have completed the given contract at the given date.
+Outputs: <redirect to /result>
+
+Contract Result Message
+-----------------------
+/result
+Required inputs: game, contract
+Semantics: pure read.
+Outputs: {player.name: {'date': contract.date[player],
+                        'first': contract.first[player]}
+          for player in game.players if contract.completed[player]}
+Possible values of contract.first[player] are:
+    True: we are known to have got there first; all players have passed our
+          date, without completing.
+    None: currently unknown.  Our date is the earliest thus far recorded, but
+          some players are still before that date.
+    False: known not to be first.  Someone has recorded an earlier date than us.
