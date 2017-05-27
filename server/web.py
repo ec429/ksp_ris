@@ -10,6 +10,12 @@ import pprint
 
 import ris
 
+# We cannot import errno, because the errno values aren't the same on all
+# platforms; we standardise on the Linux values for RIS protocol purposes
+ENOENT = 2
+EEXIST = 17
+EINVAL = 22
+
 main_css = """
 table { border: 1px solid; }
 th,td { border: 1px solid gray; }
@@ -49,10 +55,13 @@ class Page(resource.Resource):
         return t.pre(pprint.pformat(self.data(**kwargs)))
     def validate(self, **kwargs):
         return
-    def error(self, request, msg):
+    def error(self, request, msg, code=None):
         if request.args.get('json'):
             request.setHeader("content-type", "application/json")
-            return json.dumps({'err': msg})
+            d = {'err': msg}
+            if code is not None:
+                d['code'] = code
+            return json.dumps(d)
         page = t.html[t.head[t.title['KSP Race Into Space server'],
                              t.link(rel='stylesheet', href='main.css')],
                       t.body[t.h1["Error"],
@@ -80,18 +89,33 @@ class Index(Page):
                         t.td(colspan=2)[t.input(type='submit', value='New')]]])
         yield t.table[header, rows]
 
-class NewGame(Page):
+class ActionFailed(Exception):
+    def __init__(self, msg, code=None):
+        self.msg = msg
+        self.code = code
+
+class Action(Page):
     def render_GET(self, request):
         self.flatten_args(request)
-        name = request.args.get('name')
-        if not name:
-            return self.error(request, "No name specified for new game.")
-        if name in games:
-            return self.error(request,
-                              "There is already a game named '%s'." % (name,))
-        games[name] = ris.Game()
-        request.redirect('/game' + self.query_string(name=name))
+        try:
+            dest = self.act(**request.args)
+        except ActionFailed as e:
+            return self.error(request, e.msg, e.code)
+        except Exception as e:
+            return self.error(request, str(e))
+        request.redirect(dest)
         return ''
+
+class NewGame(Action):
+    def act(self, **kwargs):
+        name = kwargs.get('name')
+        if not name:
+            raise ActionFailed("No name specified for new game.", EINVAL)
+        if name in games:
+            raise ActionFailed("There is already a game named '%s'." % (name,),
+                            EEXIST)
+        games[name] = ris.Game()
+        return '/game' + self.query_string(name=name)
 
 class Game(Page):
     def validate(self, **kwargs):
@@ -119,12 +143,30 @@ class Game(Page):
                      t.td(colspan=2)[t.input(type='submit', value='New')]]])
         yield t.table[header, rows]
 
+class Join(Action):
+    def act(self, **kwargs):
+        gname = kwargs.get('game')
+        if not gname:
+            raise ActionFailed("No game name specified.", EINVAL)
+        if gname not in games:
+            raise ActionFailed("No such game '%s'." % (gname,), ENOENT)
+        game = games[gname]
+        name = kwargs.get('name')
+        if not name:
+            raise ActionFailed("No player name specified.", EINVAL)
+        if name in game.players:
+            raise ActionFailed("There is already a player named '%s'." % (name,),
+                            EEXIST)
+        game.join(name)
+        return '/game' + self.query_string(name=gname)
+
 root = resource.Resource()
 root.putChild('', Index())
 root.putChild('index.htm', Index())
 root.putChild('main.css', static.Data(main_css, 'text/css'))
 root.putChild('newgame', NewGame())
 root.putChild('game', Game())
+root.putChild('join', Join())
 
 def parse_args():
     x = optparse.OptionParser()
