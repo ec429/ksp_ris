@@ -84,7 +84,7 @@ class Game(object):
     @property
     def mindate(self):
         if not self.players:
-            return None
+            return ZERO_DATE
         return min(player.date for player in self.players.values())
     def join(self, player):
         assert player not in self.players, player
