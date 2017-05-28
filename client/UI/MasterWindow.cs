@@ -22,6 +22,19 @@ namespace ksp_ris.UI
 		        plistScroll = new Vector2();
 		}
 
+		private void SelectServer()
+		{
+			GUILayout.BeginHorizontal();
+			try {
+				GUILayout.Label("Server:", headingStyle);
+				server.host = GUILayout.TextField(server.host, GUILayout.Width(200));
+				string serverPort = GUILayout.TextField(server.port.ToString(), GUILayout.Width(80));
+				UInt16.TryParse(serverPort, out server.port);
+			} finally {
+				GUILayout.EndHorizontal();
+			}
+		}
+
 		private void GameList()
 		{
 			if (server.gameList == null)
@@ -57,6 +70,7 @@ namespace ksp_ris.UI
 		{
 		        GUILayout.BeginVertical();
 		        try {
+		                SelectServer();
 		                GUILayout.Label("Not in a game; join one.", headingStyle);
 				if (listBtn.render()) {
 					switch (listBtn.state) {

@@ -60,7 +60,6 @@ namespace ksp_ris.UI
 			}
 			public bool render()
 			{
-				bool rv;
 				GUIStyle style = busyBtnStyle;
 				switch (state) {
 				case ButtonState.READY:

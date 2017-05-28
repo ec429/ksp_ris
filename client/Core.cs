@@ -65,10 +65,13 @@ namespace ksp_ris
 
 	public class Server
 	{
-		Uri server = new Uri("http://127.0.0.1:8082"); // TODO a UI to change this...
 		public Dictionary<string,GameListEntry> gameList = null;
 		public delegate void CancelDelegate();
 		public delegate void ResultCallback(bool ok);
+
+		public string host = "127.0.0.1";
+		public UInt16 port = 8080;
+		private Uri server { get { return new UriBuilder("http", host, port).Uri; } }
 
 		public CancelDelegate ListGames(ResultCallback cb)
 		{
