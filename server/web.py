@@ -125,9 +125,7 @@ class Game(Page):
         if name not in games:
             return "No such game '%s'." % (name,)
     def data(self, name, **kwargs):
-        game = games[name]
-        return {'mindate': game.mindate.dict,
-                'players': dict((n,game.players[n].dict) for n in game.players.keys())}
+        return games[name].dict
     def content(self, name, **kwargs):
         game = games[name]
         yield t.h1["Game: ", name]

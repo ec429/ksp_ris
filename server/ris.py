@@ -101,11 +101,13 @@ class Game(object):
             for p in self.players.values():
                 p.leader = p in leaders
     def sync(self, player, date):
-        if player and date:
-            assert player in self.players, player
-            self.players[player].sync(date)
-            self.update()
-        return dict((p.name, p.dict) for p in self.players.values())
+        assert player in self.players, player
+        self.players[player].sync(date)
+        self.update()
+    @property
+    def dict(self):
+        return {'mindate': self.mindate.dict,
+                'players': dict((k,v.dict) for k,v in self.players.items())}
     def complete(self, contract, player, date):
         assert player in self.players, player
         player = self.players[player]

@@ -5,38 +5,75 @@ Uses HTTP as an underlayer, and a simple RPC approach of GET variables and
  JSON responses.  So for the most part, we can talk in terms of Python dicts.
 Dates are formatted as {'year': year, 'day': day}.  If two players achieve a
  first on the same day, they both get the payout (if eligible).
+To receive a JSON response, all pages require the input json=1.  (Otherwise,
+ you will get a human-readable HTML page.)
+Pages with no "Semantics" section are pure reads.
+On error, a page will, instead of its usual outputs, return
+    {'err': some_error_message, 'code': some_optional_error_code}
+ The following error codes are defined:
+    2   Item not found; a lookup by name failed.
+    17  Already exists; tried to create using a name that was already in use.
+    22  Invalid argument; an input was missing, had the wrong type, or was
+        otherwise inappropriate.
 
-Sync Message
-------------
-/sync
+List Games
+----------
+/
+Outputs: {game.name: {'players': [player.name for player in game.players],
+                      'mindate': game.mindate}
+          for game in games}
+
+New Game
+--------
+/newgame
+Required inputs: name.
+Semantics: Create an empty game named <name>.
+Outputs: <redirect to /game>
+
+Game Status
+-----------
+/game
 Required inputs: game.
-Optional inputs: player, date.
-Semantics: I have reached the given date, and all completions before that date
- have already been notified.  (If date or player not given, then pure read.)
-Outputs: {player.name: {'date': player.date, 'leader': player.leader}
-          for player in game.players}
+Outputs: {'mindate': game.mindate.dict,
+          'players': {player.name: {'date': player.date,
+                                    'leader': player.leader}
+                      for player in game.players}
 
-Completion Message
-------------------
+Join Game
+---------
+/join
+Required inputs: game, name.
+Semantics: Add a player named <name> to <game>.
+Outputs: <redirect to /game>
+
+Synchronise
+-----------
+/sync
+Required inputs: game, player, date.
+Semantics: <player> has reached <date>, and all completions before that date
+ have already been notified.
+Outputs: <redirect to /game>
+
+Completion
+----------
 /completed
 Required inputs: game, player, contract, date.
-Semantics: I have completed the given contract at the given date.
+Semantics: In <game>, <player> has completed <contract> at <date>.
 Outputs: <redirect to /result>
 
-Contract Result Message
------------------------
+Contract Result
+---------------
 /result
 Required inputs: game, contract
-Semantics: pure read.
 Outputs: {player.name: {'date': contract.date[player],
                         'first': contract.first[player]}
           for player in game.players if contract.completed[player]}
 Possible values of contract.first[player] are:
-    first: we are known to have got there first; all players have passed our
-           date, without completing.  Also, we were eligible for payout.
-    was_leader: we are known to have got there first, but we were the leader at
-                the time so we don't get a payout.
-    unknown: currently unknown.  Our date is the earliest thus far recorded,
-             but some players are still before that date.
-    not_first: known not to be first.  Someone has recorded an earlier date
-               than ours.
+    'first': we are known to have got there first; all players have passed our
+             date, without completing.  Also, we were eligible for payout.
+    'was_leader': we are known to have got there first, but we were the leader
+                  at the time so we don't get a payout.
+    'unknown': currently unknown.  Our date is the earliest thus far recorded,
+               but some players are still before that date.
+    'not_first': known not to be first.  Someone has recorded an earlier date
+                 than ours.
