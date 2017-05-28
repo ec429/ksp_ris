@@ -73,6 +73,20 @@ namespace ksp_ris
 		public UInt16 port = 8080;
 		private Uri server { get { return new UriBuilder("http", host, port).Uri; } }
 
+		public void Save(ConfigNode node)
+		{
+			node.AddValue("host", host);
+			node.AddValue("port", port);
+		}
+
+		public void Load(ConfigNode node)
+		{
+			if (node.HasValue("host"))
+				host = node.GetValue("host");
+			if (node.HasValue("port"))
+				UInt16.TryParse(node.GetValue("port"), out port);
+		}
+
 		public CancelDelegate ListGames(ResultCallback cb)
 		{
 			WebClient client = new WebClient();
@@ -110,32 +124,29 @@ namespace ksp_ris
 	public class RISCore : MonoBehaviour
 	{
 		public static RISCore Instance { get; protected set; }
-		public static Server server = new Server();
+		public Server server = new Server();
 		private ApplicationLauncherButton button;
 		private UI.MasterWindow masterWindow;
 
 		public void Start()
 		{
-		        if (Instance != null)
-			{
+		        if (Instance != null) {
 				Destroy(this);
 				return;
 			}
 
 			Instance = this;
 			masterWindow = new ksp_ris.UI.MasterWindow(server);
-
+			if (ScenarioRIS.Instance != null)
+				Load(ScenarioRIS.Instance.node);
 			Logging.Log("RISCore loaded successfully.");
 		}
 
 		protected void Awake()
 		{
-			try
-			{
+			try {
 				GameEvents.onGUIApplicationLauncherReady.Add(this.OnGuiAppLauncherReady);
-			}
-			catch (Exception ex)
-			{
+			} catch (Exception ex) {
 				Logging.LogException(ex);
 			}
 		}
@@ -190,27 +201,43 @@ namespace ksp_ris
 				Logging.LogException(ex);
 			}
 		}
+
+		public void Save(ConfigNode node)
+		{
+			ConfigNode sn = node.AddNode("server");
+			server.Save(sn);
+		}
+
+		public void Load(ConfigNode node)
+		{
+			if (node.HasNode("server"))
+				server.Load(node.GetNode("server"));
+		}
 	}
 
-	[KSPScenario(ScenarioCreationOptions.AddToAllGames, GameScenes.FLIGHT, GameScenes.EDITOR)]
+	[KSPScenario(ScenarioCreationOptions.AddToAllGames, GameScenes.FLIGHT, GameScenes.EDITOR, GameScenes.SPACECENTER, GameScenes.TRACKSTATION)]
 	public class ScenarioRIS : ScenarioModule
 	{
 		public static ScenarioRIS Instance {get; protected set; }
+		public ConfigNode node;
 
 		public override void OnAwake()
 		{
 			Instance = this;
 			base.OnAwake();
 		}
-/*
+
 		public override void OnSave(ConfigNode node)
 		{
+			RISCore.Instance.Save(node);
 		}
 
 		public override void OnLoad(ConfigNode node)
 		{
+			this.node = node;
+			if (RISCore.Instance != null)
+				RISCore.Instance.Load(node);
 		}
-*/
 	}
 }
 
