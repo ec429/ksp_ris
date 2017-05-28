@@ -81,7 +81,8 @@ class Index(Page):
         yield t.h1["KSP Race Into Space server"]
         yield t.h2["Games in progress"]
         header = t.tr[t.th["Name"], t.th["Players"], t.th["Min. Date"]]
-        rows = [t.tr[t.td[n], t.td[", ".join(games[n].players.keys())],
+        rows = [t.tr[t.td[t.a(href="/game" + self.query_string(name=n))[n]],
+                     t.td[", ".join(games[n].players.keys())],
                      t.td[str(games[n].mindate)]]
                 for n in sorted(games)]
         rows.append(t.form(method='GET', action='/newgame')[t.tr[
