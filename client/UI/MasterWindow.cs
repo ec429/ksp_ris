@@ -7,10 +7,10 @@ namespace ksp_ris.UI
 	public class MasterWindow : AbstractWindow
 	{
 	        private ksp_ris.Server server;
-	        AsyncButton listBtn;
-	        Vector2 listScroll;
-	        Vector2 plistScroll;
+	        AsyncButton listBtn, joinBtn, leaveBtn, refreshBtn;
+	        Vector2 listScroll, plistScroll, ptableScroll;
 	        string selectedGame;
+	        string yourName = "";
 
 		public MasterWindow(ksp_ris.Server s) : base(new Guid("2104b836-35ce-403d-926d-b0e0e0b98d1a"),
 							     "Race Into Space",
@@ -18,6 +18,9 @@ namespace ksp_ris.UI
 		{
 		        server = s;
 		        listBtn = new AsyncButton("List Games");
+		        joinBtn = new AsyncButton("Join Game");
+		        leaveBtn = new AsyncButton("Leave Game");
+		        refreshBtn = new AsyncButton("Refresh");
 			listScroll = new Vector2();
 		        plistScroll = new Vector2();
 		}
@@ -66,44 +69,150 @@ namespace ksp_ris.UI
 		        }
 		}
 
-		public override void Window(int id)
+		private void JoinButton()
 		{
-		        GUILayout.BeginVertical();
-		        try {
-		                SelectServer();
-		                GUILayout.Label("Not in a game; join one.", headingStyle);
-				if (listBtn.render()) {
-					switch (listBtn.state) {
-					case ButtonState.READY:
-					case ButtonState.SUCCESS:
-					case ButtonState.FAILURE:
-						selectedGame = null;
-						listBtn.AsyncStart(server.ListGames(listBtn.AsyncFinish));
-						break;
-					case ButtonState.BUSY:
-						Logging.Log("Cancelling ListGames");
-						listBtn.Cancel();
-					        break;
-					default:
-						Logging.LogFormat("Discarding old listBtn state {0}", listBtn.state);
-						listBtn.Reset();
-						break;
-					}
+		        GUILayout.Label("Your name: ", headingStyle);
+		        yourName = GUILayout.TextField(yourName, GUILayout.Width(160));
+			if (joinBtn.render()) {
+				switch (joinBtn.state) {
+				case ButtonState.READY:
+				case ButtonState.FAILURE:
+					if (refreshBtn.state == ButtonState.BUSY)
+						refreshBtn.Cancel();
+					else
+						refreshBtn.Reset();
+					joinBtn.AsyncStart(server.JoinGame(selectedGame, yourName, joinBtn.AsyncFinish));
+					break;
+				case ButtonState.BUSY:
+					Logging.Log("Cancelling JoinGame");
+					joinBtn.Cancel();
+				        break;
+				case ButtonState.SUCCESS:
+					Logging.LogWarningFormat("Join button should not be visible in SUCCESS state");
+					break;
+				default:
+					Logging.LogFormat("Discarding old joinBtn state {0}", joinBtn.state);
+					joinBtn.Reset();
+					break;
 				}
-				listScroll = GUILayout.BeginScrollView(listScroll, GUILayout.Width(495), GUILayout.Height(160));
+			}
+		}
+
+		private void SelectGame()
+		{
+			GUILayout.Label("Not in a game; join one.", headingStyle);
+			if (listBtn.render()) {
+				switch (listBtn.state) {
+				case ButtonState.READY:
+				case ButtonState.SUCCESS:
+				case ButtonState.FAILURE:
+					selectedGame = null;
+					listBtn.AsyncStart(server.ListGames(listBtn.AsyncFinish));
+					break;
+				case ButtonState.BUSY:
+					Logging.Log("Cancelling ListGames");
+					listBtn.Cancel();
+				        break;
+				default:
+					Logging.LogFormat("Discarding old listBtn state {0}", listBtn.state);
+					listBtn.Reset();
+					break;
+				}
+			}
+			listScroll = GUILayout.BeginScrollView(listScroll, GUILayout.Width(495), GUILayout.Height(160));
+			try {
+				GameList();
+			} finally {
+				GUILayout.EndScrollView();
+			}
+			if (server.gameList != null && selectedGame != null && server.gameList.ContainsKey(selectedGame)) {
+				plistScroll = GUILayout.BeginScrollView(plistScroll, GUILayout.Width(495), GUILayout.Height(160));
 				try {
-					GameList();
+					PlayerList();
 				} finally {
 					GUILayout.EndScrollView();
 				}
-				if (server.gameList != null && selectedGame != null && server.gameList.ContainsKey(selectedGame)) {
-					plistScroll = GUILayout.BeginScrollView(plistScroll, GUILayout.Width(495), GUILayout.Height(160));
-					try {
-						PlayerList();
-					} finally {
-						GUILayout.EndScrollView();
-					}
+				GUILayout.BeginHorizontal();
+				try {
+					JoinButton();
+				} finally {
+					GUILayout.EndHorizontal();
 				}
+			}
+		}
+
+		private void RefreshButton()
+		{
+			if (refreshBtn.render()) {
+				switch (refreshBtn.state) {
+				case ButtonState.READY:
+				case ButtonState.SUCCESS:
+				case ButtonState.FAILURE:
+					refreshBtn.AsyncStart(server.ReadGame(refreshBtn.AsyncFinish));
+					break;
+				case ButtonState.BUSY:
+					Logging.Log("Cancelling ReadGame");
+					refreshBtn.Cancel();
+				        break;
+				default:
+					Logging.LogFormat("Discarding old refreshBtn state {0}", refreshBtn.state);
+					refreshBtn.Reset();
+					break;
+				}
+			}
+		}
+
+		private void PlayerTable()
+		{
+		        foreach (KeyValuePair<string,Player> kvp in server.game.players) {
+		                GUILayout.BeginHorizontal();
+		                try {
+		                        GUILayout.Label(kvp.Key, GUILayout.Width(160));
+		                        GUILayout.Label(kvp.Value.date.ToString(), GUILayout.Width(80));
+		                        if (kvp.Value.leader)
+		                                GUILayout.Label("leader");
+		                } finally {
+		                        GUILayout.EndHorizontal();
+		                }
+		        }
+		}
+
+		private void ShowGame()
+		{
+			if (server.ourName == null) {
+				/* can't happen */
+				server.inGame = null;
+				GUILayout.Label("We have no name!  So, we aren't in the game.", headingStyle);
+				return;
+			}
+		        if (server.game == null) {
+		                if (refreshBtn.state != ButtonState.BUSY && refreshBtn.state != ButtonState.FAILURE)
+					refreshBtn.AsyncStart(server.ReadGame(refreshBtn.AsyncFinish));
+				GUILayout.Label("Connecting to server...", headingStyle);
+				RefreshButton();
+				return;
+		        }
+			GUILayout.Label(String.Format("In game {0} as player {1}", server.game, server.ourName), headingStyle);
+			GUILayout.Label(String.Format("Min. Date: {0}", server.game.mindate.ToString()));
+			RefreshButton();
+			GUILayout.Label("Players:", headingStyle);
+			ptableScroll = GUILayout.BeginScrollView(ptableScroll, GUILayout.Width(495), GUILayout.Height(160));
+			try {
+				PlayerTable();
+			} finally {
+				GUILayout.EndScrollView();
+			}
+		}
+
+		public override void Window(int id)
+		{
+			GUILayout.BeginVertical(GUILayout.Width(495));
+			try {
+				SelectServer();
+				if (server.inGame == null)
+					SelectGame();
+				else
+					ShowGame();
 			} finally {
 				GUILayout.EndVertical();
 				base.Window(id);

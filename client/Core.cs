@@ -63,20 +63,66 @@ namespace ksp_ris
 		}
 	}
 
+	public class Player
+	{
+		public YDate date;
+		public bool leader;
+		public Player(Hashtable ht)
+		{
+			date = new YDate(ht["date"] as Hashtable);
+			leader = (bool)ht["leader"];
+	        }
+	}
+
+	public class Game
+	{
+	        public YDate mindate;
+	        public Dictionary<string, Player> players;
+	        public Game(Hashtable ht)
+	        {
+	                mindate = new YDate(ht["mindate"] as Hashtable);
+	                players = new Dictionary<string, Player>();
+	                foreach (DictionaryEntry de in ht["players"] as Hashtable) {
+	                        players.Add(de.Key.ToString(), new Player(de.Value as Hashtable));
+	                }
+	        }
+	}
+
 	public class Server
 	{
 		public Dictionary<string,GameListEntry> gameList = null;
 		public delegate void CancelDelegate();
 		public delegate void ResultCallback(bool ok);
 
+		public string inGame = null;
+		public string ourName = null;
+		public Game game = null;
 		public string host = "127.0.0.1";
 		public UInt16 port = 8080;
 		private Uri server { get { return new UriBuilder("http", host, port).Uri; } }
+		private Uri Page(string path)
+		{
+			UriBuilder ub = new UriBuilder(server);
+			ub.Path = path;
+			ub.Query = "json=1";
+			return ub.Uri;
+		}
+		private Uri Page(string path, string query_format, params object[] args)
+		{
+			UriBuilder ub = new UriBuilder(server);
+			ub.Path = path;
+			ub.Query = "json=1&" + String.Format(query_format, args);
+			return ub.Uri;
+		}
 
 		public void Save(ConfigNode node)
 		{
 			node.AddValue("host", host);
 			node.AddValue("port", port);
+			if (inGame != null)
+				node.AddValue("game", inGame);
+			if (ourName != null)
+				node.AddValue("player", ourName);
 		}
 
 		public void Load(ConfigNode node)
@@ -85,6 +131,10 @@ namespace ksp_ris
 				host = node.GetValue("host");
 			if (node.HasValue("port"))
 				UInt16.TryParse(node.GetValue("port"), out port);
+			if (node.HasValue("game"))
+				inGame = node.GetValue("game");
+			if (node.HasValue("player"))
+				ourName = node.GetValue("player");
 		}
 
 		public CancelDelegate ListGames(ResultCallback cb)
@@ -115,7 +165,65 @@ namespace ksp_ris
 				}
 				cb.Invoke(result);
 			};
-			client.DownloadStringAsync(new Uri(server, "/?json=1"));
+			client.DownloadStringAsync(Page("/"));
+			return client.CancelAsync;
+		}
+
+		public CancelDelegate JoinGame(string game, string name, ResultCallback cb)
+		{
+			WebClient client = new WebClient();
+			client.DownloadStringCompleted += (object sender, DownloadStringCompletedEventArgs e) => {
+				bool result = false;
+				try {
+					if (e.Cancelled) {
+						Logging.Log("JoinGame cancelled");
+					} else if (e.Error != null) {
+						Logging.LogException(e.Error);
+					} else {
+						string json = e.Result;
+						Logging.Log("JoinGame: " + json);
+						object obj = MiniJSON.jsonDecode(json);
+						System.Collections.Hashtable ht = obj as Hashtable;
+						inGame = game;
+						ourName = name;
+						this.game = new Game(ht);
+						result = true;
+					}
+				} catch (Exception exc) {
+					/* Job failed, but we still have to exit job state */
+					Logging.LogException(exc);
+				}
+				cb.Invoke(result);
+			};
+			client.DownloadStringAsync(Page("/join", "game={0}&name={1}", game, name));
+			return client.CancelAsync;
+		}
+
+		public CancelDelegate ReadGame(ResultCallback cb)
+		{
+			WebClient client = new WebClient();
+			client.DownloadStringCompleted += (object sender, DownloadStringCompletedEventArgs e) => {
+				bool result = false;
+				try {
+					if (e.Cancelled) {
+						Logging.Log("ReadGame cancelled");
+					} else if (e.Error != null) {
+						Logging.LogException(e.Error);
+					} else {
+						string json = e.Result;
+						Logging.Log("ReadGame: " + json);
+						object obj = MiniJSON.jsonDecode(json);
+						System.Collections.Hashtable ht = obj as Hashtable;
+						game = new Game(ht);
+						result = true;
+					}
+				} catch (Exception exc) {
+					/* Job failed, but we still have to exit job state */
+					Logging.LogException(exc);
+				}
+				cb.Invoke(result);
+			};
+			client.DownloadStringAsync(Page("/game", "name={0}", inGame));
 			return client.CancelAsync;
 		}
 	}
