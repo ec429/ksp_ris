@@ -104,7 +104,7 @@ class Game(object):
     @property
     def mindate(self):
         if not self.players:
-            return ZERO_DATE
+            return self.oldmindate
         return min(player.date for player in self.players.values())
     def join(self, player):
         assert player not in self.players, player
@@ -130,6 +130,7 @@ class Game(object):
             leaders = c.update(d)
             for p in self.players.values():
                 p.leader = p in leaders
+        self.oldmindate = self.mindate
     def sync(self, player, date):
         assert player in self.players, player
         self.players[player].sync(date)

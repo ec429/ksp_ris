@@ -7,7 +7,7 @@ namespace ksp_ris.UI
 	public class MasterWindow : AbstractWindow
 	{
 	        private ksp_ris.Server server;
-	        AsyncButton listBtn, joinBtn, leaveBtn, refreshBtn;
+	        AsyncButton listBtn, joinBtn, leaveBtn, refreshBtn, syncBtn;
 	        Vector2 listScroll, plistScroll, ptableScroll;
 	        string selectedGame;
 	        string yourName = "";
@@ -21,6 +21,7 @@ namespace ksp_ris.UI
 		        joinBtn = new AsyncButton("Join Game");
 		        leaveBtn = new AsyncButton("Leave Game");
 		        refreshBtn = new AsyncButton("Refresh");
+		        syncBtn = new AsyncButton("SYNC");
 			listScroll = new Vector2();
 		        plistScroll = new Vector2();
 		}
@@ -77,6 +78,7 @@ namespace ksp_ris.UI
 				switch (joinBtn.state) {
 				case ButtonState.READY:
 				case ButtonState.FAILURE:
+				case ButtonState.SUCCESS:
 					if (refreshBtn.state == ButtonState.BUSY)
 						refreshBtn.Cancel();
 					else
@@ -91,9 +93,6 @@ namespace ksp_ris.UI
 					Logging.Log("Cancelling JoinGame");
 					joinBtn.Cancel();
 				        break;
-				case ButtonState.SUCCESS:
-					Logging.LogWarningFormat("Join button should not be visible in SUCCESS state");
-					break;
 				default:
 					Logging.LogFormat("Discarding old joinBtn state {0}", joinBtn.state);
 					joinBtn.Reset();
@@ -166,6 +165,27 @@ namespace ksp_ris.UI
 			}
 		}
 
+		private void SyncButton()
+		{
+			if (syncBtn.render()) {
+				switch (syncBtn.state) {
+				case ButtonState.READY:
+				case ButtonState.SUCCESS:
+				case ButtonState.FAILURE:
+					syncBtn.AsyncStart(server.Sync(syncBtn.AsyncFinish));
+					break;
+				case ButtonState.BUSY:
+					Logging.Log("Cancelling Sync");
+					syncBtn.Cancel();
+				        break;
+				default:
+					Logging.LogFormat("Discarding old syncBtn state {0}", syncBtn.state);
+					syncBtn.Reset();
+					break;
+				}
+			}
+		}
+
 		private void PlayerTable()
 		{
 		        foreach (KeyValuePair<string,Player> kvp in server.game.players) {
@@ -188,6 +208,7 @@ namespace ksp_ris.UI
 				case ButtonState.READY:
 				case ButtonState.SUCCESS:
 				case ButtonState.FAILURE:
+					server.gameList = null;
 					leaveBtn.AsyncStart(server.PartGame(leaveBtn.AsyncFinish));
 					break;
 				case ButtonState.BUSY:
@@ -217,9 +238,15 @@ namespace ksp_ris.UI
 				RefreshButton();
 				return;
 		        }
-			GUILayout.Label(String.Format("In game {0} as player {1}", server.game, server.ourName), headingStyle);
+			GUILayout.Label(String.Format("In game {0} as player {1}", server.inGame, server.ourName), headingStyle);
 			GUILayout.Label(String.Format("Min. Date: {0}", server.game.mindate.ToString()));
-			RefreshButton();
+			GUILayout.BeginHorizontal();
+			try {
+				RefreshButton();
+				SyncButton();
+			} finally {
+				GUILayout.EndHorizontal();
+			}
 			GUILayout.Label("Players:", headingStyle);
 			ptableScroll = GUILayout.BeginScrollView(ptableScroll, GUILayout.Width(495), GUILayout.Height(160));
 			try {

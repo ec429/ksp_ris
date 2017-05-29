@@ -196,6 +196,30 @@ class Part(Action):
         game.save()
         return '/game' + self.query_string(name=gname, json=kwargs.get('json'))
 
+class Sync(Action):
+    def act(self, **kwargs):
+        gname = kwargs.get('game')
+        if not gname:
+            raise ActionFailed("No game name specified.", EINVAL)
+        if gname not in games:
+            raise ActionFailed("No such game '%s'." % (gname,), ENOENT)
+        game = games[gname]
+        pname = kwargs.get('player')
+        if not pname:
+            raise ActionFailed("No player name specified.", EINVAL)
+        if pname not in game.players:
+            raise ActionFailed("There is no player named '%s'." % (pname,),
+                               ENOENT)
+        year = kwargs.get('year')
+        if not year:
+            raise ActionFailed("No year specified.", EINVAL)
+        day = kwargs.get('day')
+        if not day:
+            raise ActionFailed("No day specified.", EINVAL)
+        game.sync(pname, ris.Date(int(year), int(day)))
+        game.save()
+        return '/game' + self.query_string(name=gname, json=kwargs.get('json'))
+
 root = resource.Resource()
 root.putChild('', Index())
 root.putChild('index.htm', Index())
@@ -204,6 +228,7 @@ root.putChild('newgame', NewGame())
 root.putChild('game', Game())
 root.putChild('join', Join())
 root.putChild('part', Part())
+root.putChild('sync', Sync())
 
 def parse_args():
     x = optparse.OptionParser()

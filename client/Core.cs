@@ -13,10 +13,11 @@ namespace ksp_ris
 		public int year;
 		public int day;
 
-		public YDate(int year, int day)
+		public YDate(double UT)
 		{
-			this.year = year;
-			this.day = day;
+			int days = (int)(UT / 86400);
+			year = 1 + days / 365;
+			day = 1 + days % 365;
 		}
 
 		public YDate(Hashtable ht)
@@ -287,6 +288,35 @@ namespace ksp_ris
 				cb.Invoke(result);
 			};
 			client.DownloadStringAsync(Page("/game", "name={0}", inGame));
+			return client.CancelAsync;
+		}
+
+		public CancelDelegate Sync(ResultCallback cb)
+		{
+			WebClient client = new WebClient();
+			client.DownloadStringCompleted += (object sender, DownloadStringCompletedEventArgs e) => {
+				bool result = false;
+				try {
+					if (e.Cancelled) {
+						Logging.Log("Sync cancelled");
+					} else if (e.Error != null) {
+						Logging.LogException(e.Error);
+					} else {
+						string json = e.Result;
+						Logging.Log("Sync: " + json);
+						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						checkError(ht);
+						game = new Game(ht);
+						result = true;
+					}
+				} catch (Exception exc) {
+					/* Job failed, but we still have to exit job state */
+					Logging.LogException(exc);
+				}
+				cb.Invoke(result);
+			};
+			YDate date = new YDate(Planetarium.GetUniversalTime());
+			client.DownloadStringAsync(Page("/sync", "game={0}&player={1}&year={2:D}&day={3:D}", inGame, ourName, date.year, date.day));
 			return client.CancelAsync;
 		}
 	}

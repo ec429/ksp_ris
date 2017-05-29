@@ -4,7 +4,8 @@ Race Into Space network protocol
 Uses HTTP as an underlayer, and a simple RPC approach of GET variables and
  JSON responses.  So for the most part, we can talk in terms of Python dicts.
 Dates are formatted as {'year': year, 'day': day}.  If two players achieve a
- first on the same day, they both get the payout (if eligible).
+ first on the same day, they both get the payout (if eligible).  RIS defines
+ the day and year as 24 hours and 365 days respectively.
 To receive a JSON response, all pages require the input json=1.  (Otherwise,
  you will get a human-readable HTML page.)
 Pages with no "Semantics" section are pure reads.
@@ -56,16 +57,16 @@ Outputs: <redirect to /game>
 Synchronise
 -----------
 /sync
-Required inputs: game, player, date.
-Semantics: <player> has reached <date>, and all completions before that date
- have already been notified.
+Required inputs: game, player, year, day.
+Semantics: <player> has reached y<year>d<day>, and all completions before that
+ date have already been notified.
 Outputs: <redirect to /game>
 
 Completion
 ----------
 /completed
-Required inputs: game, player, contract, date.
-Semantics: In <game>, <player> has completed <contract> at <date>.
+Required inputs: game, player, contract, year, day.
+Semantics: In <game>, <player> has completed <contract> at y<year>d<day>.
 Outputs: <redirect to /result>
 
 Contract Result
