@@ -16,6 +16,7 @@ import ris
 ENOENT = 2
 EEXIST = 17
 EINVAL = 22
+ENOTEMPTY = 39
 
 main_css = """
 table { border: 1px solid; }
@@ -93,13 +94,17 @@ class Index(Page):
         yield t.h1["KSP Race Into Space server"]
         yield t.h2["Games in progress"]
         header = t.tr[t.th["Name"], t.th["Players"], t.th["Min. Date"]]
-        rows = [t.tr[t.td[t.a(href="/game" + self.query_string(name=n))[n]],
-                     t.td[", ".join(games[n].players.keys())],
-                     t.td[str(games[n].mindate)]]
+        rows = [t.form(method='GET', action='/rmgame')[t.tr[
+                    t.td[t.a(href="/game" + self.query_string(name=n))[n]],
+                    t.td[", ".join(games[n].players.keys())],
+                    t.td[str(games[n].mindate)],
+                    t.td[t.input(type='hidden', name='game', value=n),
+                         t.input(type='submit', value='End')]]]
                 for n in sorted(games)]
         rows.append(t.form(method='GET', action='/newgame')[t.tr[
                         t.td[t.input(type='text', name='name')],
-                        t.td(colspan=2)[t.input(type='submit', value='New')]]])
+                        t.td(colspan=2),
+                        t.td[t.input(type='submit', value='New')]]])
         yield t.table[header, rows]
 
 class ActionFailed(Failed): pass
@@ -129,6 +134,21 @@ class NewGame(Action):
         games[name] = ris.Game(name)
         games[name].save()
         return '/game' + self.query_string(name=name, json=kwargs.get('json'))
+
+class RmGame(Action):
+    def act(self, **kwargs):
+        name = kwargs.get('game')
+        if not name:
+            raise ActionFailed("No game specified.", EINVAL)
+        if name not in games:
+            raise ActionFailed("There is no game named '%s'." % (name,), ENOENT)
+        game = games[name]
+        if game.players:
+            raise ActionFailed("Game '%s' has %d players." % (name, len(game.players)),
+                               ENOTEMPTY)
+        game.rm()
+        del games[name]
+        return '/' + self.query_string(json=kwargs.get('json'))
 
 class Game(Page):
     def validate(self, **kwargs):
@@ -225,6 +245,7 @@ root.putChild('', Index())
 root.putChild('index.htm', Index())
 root.putChild('main.css', static.Data(main_css, 'text/css'))
 root.putChild('newgame', NewGame())
+root.putChild('rmgame', RmGame())
 root.putChild('game', Game())
 root.putChild('join', Join())
 root.putChild('part', Part())

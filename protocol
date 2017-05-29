@@ -16,6 +16,7 @@ On error, a page will, instead of its usual outputs, return
     17  Already exists; tried to create using a name that was already in use.
     22  Invalid argument; an input was missing, had the wrong type, or was
         otherwise inappropriate.
+    39  Not empty; tried to delete an item which still has contents.
 
 List Games
 ----------
@@ -30,6 +31,12 @@ New Game
 Required inputs: name.
 Semantics: Create an empty game named <name>.  The <name> must not contain '/'.
 Outputs: <redirect to /game>
+
+End Game
+--------
+/rmgame
+Required inputs: game.
+Semantics: Delete <game>, which must be empty.
 
 Game Status
 -----------

@@ -165,6 +165,8 @@ class Game(object):
         # XXX this will trash the save if we crash!
         with open(os.path.join('games', self.name), "w") as f:
             json.dump(self.save_dict, f)
+    def rm(self):
+        os.remove(os.path.join('games', self.name))
     @classmethod
     def load(cls, name, f):
         d = json.load(f)
