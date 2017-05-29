@@ -81,6 +81,10 @@ namespace ksp_ris.UI
 						refreshBtn.Cancel();
 					else
 						refreshBtn.Reset();
+					if (leaveBtn.state == ButtonState.BUSY)
+						leaveBtn.Cancel();
+					else
+						leaveBtn.Reset();
 					joinBtn.AsyncStart(server.JoinGame(selectedGame, yourName, joinBtn.AsyncFinish));
 					break;
 				case ButtonState.BUSY:
@@ -177,10 +181,31 @@ namespace ksp_ris.UI
 		        }
 		}
 
+		private void LeaveButton()
+		{
+			if (leaveBtn.render()) {
+				switch (leaveBtn.state) {
+				case ButtonState.READY:
+				case ButtonState.SUCCESS:
+				case ButtonState.FAILURE:
+					leaveBtn.AsyncStart(server.PartGame(leaveBtn.AsyncFinish));
+					break;
+				case ButtonState.BUSY:
+					Logging.Log("Cancelling PartGame");
+					leaveBtn.Cancel();
+				        break;
+				default:
+					Logging.LogFormat("Discarding old leaveBtn state {0}", leaveBtn.state);
+					leaveBtn.Reset();
+					break;
+				}
+			}
+		}
+
 		private void ShowGame()
 		{
 			if (server.ourName == null) {
-				/* can't happen */
+				/* can't happen.  If it does, we have no way to tell the server, because we don't have a name to /part with */
 				server.inGame = null;
 				GUILayout.Label("We have no name!  So, we aren't in the game.", headingStyle);
 				return;
@@ -202,6 +227,7 @@ namespace ksp_ris.UI
 			} finally {
 				GUILayout.EndScrollView();
 			}
+			LeaveButton();
 		}
 
 		public override void Window(int id)

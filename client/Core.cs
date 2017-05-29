@@ -97,6 +97,8 @@ namespace ksp_ris
 		public string inGame = null;
 		public string ourName = null;
 		public Game game = null;
+		/* Error codes used in RIS protocol */
+		private const int ENOENT = 2, EEXIST = 17, EINVAL = 22;
 		public string host = "127.0.0.1";
 		public UInt16 port = 8080;
 		private Uri server { get { return new UriBuilder("http", host, port).Uri; } }
@@ -137,6 +139,32 @@ namespace ksp_ris
 				ourName = node.GetValue("player");
 		}
 
+		private class Error : Exception
+		{
+			string msg;
+			int code;
+			public Error(string msg, int code)
+			{
+				this.msg = msg;
+				this.code = code;
+			}
+			public Error(string msg) : this(msg, 0)
+			{
+			}
+			public override string Message { get {
+				return String.Format("Error {0:D}: {1}", code, msg);
+			}}
+		}
+
+		private void checkError(Hashtable ht)
+		{
+			if (!ht.Contains("err"))
+				return;
+			if (ht.Contains("code"))
+				throw new Error(ht["err"] as string, (int)ht["code"]);
+			throw new Error(ht["err"] as string);
+		}
+
 		public CancelDelegate ListGames(ResultCallback cb)
 		{
 			WebClient client = new WebClient();
@@ -150,8 +178,8 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("ListGames: " + json);
-						object obj = MiniJSON.jsonDecode(json);
-						System.Collections.Hashtable ht = obj as Hashtable;
+						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						checkError(ht);
 						gameList = new Dictionary<string, GameListEntry>();
 						foreach (DictionaryEntry de in ht) {
 							gameList.Add(de.Key.ToString(), new GameListEntry(de.Value as Hashtable));
@@ -182,8 +210,8 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("JoinGame: " + json);
-						object obj = MiniJSON.jsonDecode(json);
-						System.Collections.Hashtable ht = obj as Hashtable;
+						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						checkError(ht);
 						inGame = game;
 						ourName = name;
 						this.game = new Game(ht);
@@ -196,6 +224,41 @@ namespace ksp_ris
 				cb.Invoke(result);
 			};
 			client.DownloadStringAsync(Page("/join", "game={0}&name={1}", game, name));
+			return client.CancelAsync;
+		}
+
+		public CancelDelegate PartGame(ResultCallback cb)
+		{
+			WebClient client = new WebClient();
+			client.DownloadStringCompleted += (object sender, DownloadStringCompletedEventArgs e) => {
+				bool result = false;
+				try {
+					if (e.Cancelled) {
+						Logging.Log("PartGame cancelled");
+					} else if (e.Error != null) {
+						Logging.LogException(e.Error);
+					} else {
+						string json = e.Result;
+						Logging.Log("PartGame: " + json);
+						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						if (ht.Contains("err")) {
+							if (ht.Contains("code") && (int)ht["code"] == ENOENT)
+								Logging.Log("Player was already parted");
+							else /* real error, let's throw */
+								checkError(ht);
+						}
+						inGame = null;
+						ourName = null;
+						this.game = null;
+						result = true;
+					}
+				} catch (Exception exc) {
+					/* Job failed, but we still have to exit job state */
+					Logging.LogException(exc);
+				}
+				cb.Invoke(result);
+			};
+			client.DownloadStringAsync(Page("/part", "game={0}&name={1}", inGame, ourName));
 			return client.CancelAsync;
 		}
 
@@ -212,8 +275,8 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("ReadGame: " + json);
-						object obj = MiniJSON.jsonDecode(json);
-						System.Collections.Hashtable ht = obj as Hashtable;
+						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						checkError(ht);
 						game = new Game(ht);
 						result = true;
 					}
@@ -348,4 +411,3 @@ namespace ksp_ris
 		}
 	}
 }
-
