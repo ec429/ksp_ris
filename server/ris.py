@@ -25,8 +25,8 @@ ZERO_DATE = Date(0, 0) # game starts on Date(1, 1)
 
 class Contract(object):
     F_UNKNOWN    = 'unknown'
-    F_NOT_FIRST  = 'not first'
-    F_WAS_LEADER = 'was leader'
+    F_NOT_FIRST  = 'not_first'
+    F_WAS_LEADER = 'was_leader'
     F_FIRST      = 'first'
     def __init__(self, name):
         self.name = name
