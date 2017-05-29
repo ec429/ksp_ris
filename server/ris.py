@@ -33,7 +33,8 @@ class Contract(object):
         self.date = {}
         self.results = {}
     def complete(self, player, date):
-        self.date[player] = date
+        if player not in self.date:
+            self.date[player] = date
     @property
     def firstdate(self):
         if self.date:
@@ -72,9 +73,10 @@ class Contract(object):
     @classmethod
     def load(cls, name, d, players):
         c = cls(name)
-        c.date = dict((players[k],v['date']) for k,v in d.items())
+        c.date = dict((players[k],Date.load(v['date'])) for k,v in d.items())
         c.results = dict((players[k],v['first']) for k,v in d.items()
-                         if v['first'] != self.F_UNKNOWN)
+                         if v['first'] != cls.F_UNKNOWN)
+        return c
 
 class Player(object):
     def __init__(self, name):
@@ -120,12 +122,11 @@ class Game(object):
         # might cause some unintuitive contract behaviour
         self.update()
     def update(self):
-        if self.mindate <= self.oldmindate:
+        if self.mindate < self.oldmindate:
             return
         new = [(contract.firstdate, contract)
                for contract in self.contracts.values()
-               if self.oldmindate < contract.firstdate and
-                  contract.firstdate <= self.mindate]
+               if contract.firstdate <= self.mindate and not contract.results]
         for (d,c) in sorted(new):
             leaders = c.update(d)
             for p in self.players.values():
@@ -142,12 +143,10 @@ class Game(object):
     def complete(self, contract, player, date):
         assert player in self.players, player
         player = self.players[player]
-        # Implicit sync
-        player.sync(date)
         # If date < player.date, that means we already sync'd a future date.
         # To avoid breakage, we use the sync date rather than the date supplied
         # with the completion message.
-        date = player.date
+        date = max(date, player.date)
         if contract not in self.contracts:
             self.contracts[contract] = Contract(contract)
         self.contracts[contract].complete(player, date)

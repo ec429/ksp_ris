@@ -179,6 +179,38 @@ class Game(Page):
                      t.td(colspan=2),
                      t.td[t.input(type='submit', value='New')]]])
         yield t.table[header, rows]
+        yield t.h2["Contracts"]
+        yield t.ul[[t.li[t.a(href="/result" + self.query_string(game=name,
+                                                                contract=n))[n]]
+                    for n in game.contracts]]
+
+class Result(Page):
+    def validate(self, **kwargs):
+        name = kwargs.get('game')
+        if not name:
+            raise Failed("No game specified.", EINVAL)
+        if name not in games:
+            raise Failed("No such game '%s'." % (name,), ENOENT)
+        game = games[name]
+        cname = kwargs.get('contract')
+        if not cname:
+            raise Failed("No contract specified.", EINVAL)
+        if cname not in game.contracts:
+            raise Failed("No such contract '%s'." % (cname,), ENOENT)
+    def data(self, game, contract, **kwargs):
+        return games[game].contracts[contract].dict
+    def content(self, game, contract, **kwargs):
+        game = games[game]
+        contract = game.contracts[contract]
+        yield t.h1["Contract: ", contract.name]
+        yield t.h2["Firstdate: ", str(contract.firstdate)]
+        yield t.h2["Results"]
+        header = t.tr[t.th["Player"], t.th["Date"], t.th["Result"]]
+        rows = [t.tr[t.td[p.name],
+                     t.td[str(contract.date[p])],
+                     t.td[contract.first(p)]]
+                for p in contract.date]
+        yield t.table[header, rows]
 
 class Join(Action):
     def act(self, **kwargs):
@@ -240,6 +272,33 @@ class Sync(Action):
         game.save()
         return '/game' + self.query_string(name=gname, json=kwargs.get('json'))
 
+class Completed(Action):
+    def act(self, **kwargs):
+        gname = kwargs.get('game')
+        if not gname:
+            raise ActionFailed("No game name specified.", EINVAL)
+        if gname not in games:
+            raise ActionFailed("No such game '%s'." % (gname,), ENOENT)
+        game = games[gname]
+        pname = kwargs.get('player')
+        if not pname:
+            raise ActionFailed("No player name specified.", EINVAL)
+        if pname not in game.players:
+            raise ActionFailed("There is no player named '%s'." % (pname,),
+                               ENOENT)
+        year = kwargs.get('year')
+        if not year:
+            raise ActionFailed("No year specified.", EINVAL)
+        day = kwargs.get('day')
+        if not day:
+            raise ActionFailed("No day specified.", EINVAL)
+        cname = kwargs.get('contract')
+        if not cname:
+            raise ActionFailed("No contract specified.", EINVAL)
+        game.complete(cname, pname, ris.Date(int(year), int(day)))
+        return '/result' + self.query_string(game=gname, contract=cname,
+                                             json=kwargs.get('json'))
+
 root = resource.Resource()
 root.putChild('', Index())
 root.putChild('index.htm', Index())
@@ -250,29 +309,34 @@ root.putChild('game', Game())
 root.putChild('join', Join())
 root.putChild('part', Part())
 root.putChild('sync', Sync())
+root.putChild('result', Result())
+root.putChild('completed', Completed())
 
 def parse_args():
     x = optparse.OptionParser()
     x.add_option('-p', '--port', type='int', help='TCP port number to serve',
                  default=8080)
+    x.add_option('-f', '--strict', action='store_true')
     opts, args = x.parse_args()
     if args:
         x.error("Unexpected positional arguments")
     return opts
 
-def load_games():
+def load_games(opts):
     rv = {}
     for fn in os.listdir('games'):
         try:
             path = os.path.join('games', fn)
             rv[fn] = ris.Game.load(fn, open(path, 'r'))
         except Exception as e:
-            print "Failed to load %s (skipping): %r" % (f, e)
+            if opts.strict:
+                raise
+            print "Failed to load %s (skipping): %r" % (fn, e)
     return rv
 
 def main(opts):
     global games
-    games = load_games()
+    games = load_games(opts)
     ep = "tcp:%d"%(opts.port,)
     endpoints.serverFromString(reactor, ep).listen(server.Site(root))
     reactor.run()
