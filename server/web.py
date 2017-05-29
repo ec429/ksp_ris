@@ -7,6 +7,7 @@ import optparse
 import json
 import urllib
 import pprint
+import os
 
 import ris
 
@@ -115,7 +116,10 @@ class NewGame(Action):
         if name in games:
             raise ActionFailed("There is already a game named '%s'." % (name,),
                             EEXIST)
-        games[name] = ris.Game()
+        if '/' in name:
+            raise ActionFailed("Game name may not contain '/'.", EINVAL)
+        games[name] = ris.Game(name)
+        games[name].save()
         return '/game' + self.query_string(name=name)
 
 class Game(Page):
@@ -157,6 +161,7 @@ class Join(Action):
             raise ActionFailed("There is already a player named '%s'." % (name,),
                             EEXIST)
         game.join(name)
+        game.save()
         return '/game' + self.query_string(name=gname)
 
 root = resource.Resource()
@@ -176,7 +181,19 @@ def parse_args():
         x.error("Unexpected positional arguments")
     return opts
 
+def load_games():
+    rv = {}
+    for fn in os.listdir('games'):
+        try:
+            path = os.path.join('games', fn)
+            rv[fn] = ris.Game.load(fn, open(path, 'r'))
+        except Exception as e:
+            print "Failed to load %s (skipping): %r" % (f, e)
+    return rv
+
 def main(opts):
+    global games
+    games = load_games()
     ep = "tcp:%d"%(opts.port,)
     endpoints.serverFromString(reactor, ep).listen(server.Site(root))
     reactor.run()

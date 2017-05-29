@@ -27,7 +27,7 @@ New Game
 --------
 /newgame
 Required inputs: name.
-Semantics: Create an empty game named <name>.
+Semantics: Create an empty game named <name>.  The <name> must not contain '/'.
 Outputs: <redirect to /game>
 
 Game Status

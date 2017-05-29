@@ -1,5 +1,9 @@
 #!/usr/bin/python2
 
+import tempfile
+import json
+import os
+
 class Date(object):
     def __init__(self, year, day):
         self.year = year
@@ -13,6 +17,9 @@ class Date(object):
     @property
     def dict(self):
         return {'year': self.year, 'day': self.day}
+    @classmethod
+    def load(cls, d):
+        return cls(d['year'], d['day'])
 
 ZERO_DATE = Date(0, 0) # game starts on Date(1, 1)
 
@@ -62,6 +69,12 @@ class Contract(object):
         return dict((p.name, {'date': self.date[p].dict,
                               'first': self.first(p)})
                     for p in self.date)
+    @classmethod
+    def load(cls, name, d, players):
+        c = cls(name)
+        c.date = dict((players[k],v['date']) for k,v in d.items())
+        c.results = dict((players[k],v['first']) for k,v in d.items()
+                         if v['first'] != self.F_UNKNOWN)
 
 class Player(object):
     def __init__(self, name):
@@ -75,9 +88,16 @@ class Player(object):
     @property
     def dict(self):
         return {'date': self.date.dict, 'leader': self.leader}
+    @classmethod
+    def load(cls, name, d):
+        p = cls(name)
+        p.date = Date.load(d['date'])
+        p.leader = d['leader']
+        return p
 
 class Game(object):
-    def __init__(self):
+    def __init__(self, name):
+        self.name = name
         self.players = {}
         self.contracts = {}
         self.oldmindate = ZERO_DATE
@@ -125,28 +145,49 @@ class Game(object):
         if contract not in self.contracts:
             return {}
         return self.contracts[contract].dict
+    @property
+    def save_dict(self):
+        return {'oldmindate': self.oldmindate.dict,
+                'players': dict((k,v.dict) for k,v in self.players.items()),
+                'contracts': dict((k,v.dict) for k,v in self.contracts.items())}
+    def save(self):
+        # XXX this will trash the save if we crash!
+        with open(os.path.join('games', self.name), "w") as f:
+            json.dump(self.save_dict, f)
+    @classmethod
+    def load(cls, name, f):
+        d = json.load(f)
+        f.close()
+        g = cls(name)
+        g.oldmindate = Date.load(d['oldmindate'])
+        g.players = dict((k,Player.load(k, v)) for k,v in d['players'].items())
+        g.contracts = dict((k,Contract.load(k, v, g.players))
+                           for k,v in d['contracts'].items())
+        return g
 
 def test():
-    g = Game()
+    g = Game('Test')
     g.join('P1')
     g.join('P2')
-    print g.sync('P1', Date(1, 1))
-    print g.sync('P2', Date(1, 2))
+    g.sync('P1', Date(1, 1))
+    print g.dict
+    g.sync('P2', Date(1, 2))
+    print g.dict
     print "P1 FS"
     g.complete('FirstSatellite', 'P1', Date(1, 3))
     print g.results('FirstSatellite')
-    print g.sync(None, None)
+    print g.dict
     print "P2 FS"
     g.complete('FirstSatellite', 'P2', Date(1, 4))
     print g.results('FirstSatellite')
-    print g.sync(None, None)
+    print g.dict
     print "P2 CO"
     g.complete('CrewedOrbit', 'P2', Date(1, 6))
     print g.results('CrewedOrbit')
     print "P1 CO"
     g.complete('CrewedOrbit', 'P1', Date(1, 5))
     print g.results('CrewedOrbit')
-    print g.sync(None, None)
+    print g.dict
 
 if __name__ == '__main__':
     test()
