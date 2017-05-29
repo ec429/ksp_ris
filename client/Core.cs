@@ -26,6 +26,12 @@ namespace ksp_ris
 		        this.day = (int)(double)ht["day"];
 		}
 
+		public YDate(ConfigNode node)
+		{
+			year = int.Parse(node.GetValue("year"));
+			day = int.Parse(node.GetValue("day"));
+		}
+
 		public int CompareTo(YDate other)
 		{
 			if (other.year != year)
@@ -89,11 +95,45 @@ namespace ksp_ris
 	        }
 	}
 
+	public class Result
+	{
+		public YDate date;
+		public enum First { FIRST, WAS_LEADER, UNKNOWN, NOT_FIRST };
+		public First first;
+		public Result(Hashtable ht, string ourName)
+		{
+			if (ht.ContainsKey(ourName)) {
+				Hashtable data = ht[ourName] as Hashtable;
+				date = new YDate(data["date"] as Hashtable);
+				switch (data["first"] as string) {
+				case "first":
+					first = First.FIRST;
+					break;
+				case "was_leader":
+					first = First.WAS_LEADER;
+					break;
+				case "unknown":
+					first = First.UNKNOWN;
+					break;
+				case "not_first":
+					first = First.NOT_FIRST;
+					break;
+				default:
+					throw new Exception(String.Format("Bad 'first' value {0}", data["first"] as string));
+				}
+			} else {
+				date = null;
+				first = First.UNKNOWN;
+			}
+		}
+	}
+
 	public class Server
 	{
 		public Dictionary<string,GameListEntry> gameList = null;
 		public delegate void CancelDelegate();
 		public delegate void ResultCallback(bool ok);
+		public ContractMonitor monitor;
 
 		public string inGame = null;
 		public string ourName = null;
@@ -293,6 +333,32 @@ namespace ksp_ris
 
 		public CancelDelegate Sync(ResultCallback cb)
 		{
+			RISMilestone stone = monitor.CheckAll();
+			CancelDelegate cd = () => {};
+			if (stone != null) {
+				cd += Report(stone, (bool ok) => {
+					if (ok)
+						cd += Sync(cb);
+					else
+						cb.Invoke(false);
+				});
+				return cd;
+			}
+			cd += SyncTail((bool ok) => {
+				if (ok) {
+					List<RISMilestone> toResolve = monitor.ToResolve();
+					if (toResolve.Count > 0)
+						cd += Resolve(toResolve, cb);
+					else
+						cb.Invoke(true);
+				} else {
+					cb.Invoke(false);
+				}
+			});
+			return cd;
+		}
+		public CancelDelegate SyncTail(ResultCallback cb)
+		{
 			WebClient client = new WebClient();
 			client.DownloadStringCompleted += (object sender, DownloadStringCompletedEventArgs e) => {
 				bool result = false;
@@ -319,12 +385,198 @@ namespace ksp_ris
 			client.DownloadStringAsync(Page("/sync", "game={0}&player={1}&year={2:D}&day={3:D}", inGame, ourName, date.year, date.day));
 			return client.CancelAsync;
 		}
+
+		public CancelDelegate Report(RISMilestone stone, ResultCallback cb)
+		{
+			WebClient client = new WebClient();
+			Logging.LogFormat("Reporting {0} completed at {1}", stone.name, stone.completed.ToString());
+			client.DownloadStringCompleted += (object sender, DownloadStringCompletedEventArgs e) => {
+				bool result = false;
+				try {
+					if (e.Cancelled) {
+						Logging.Log("Report(Sync) cancelled");
+					} else if (e.Error != null) {
+						Logging.LogException(e.Error);
+					} else {
+						string json = e.Result;
+						Logging.Log("Report: " + json);
+						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						checkError(ht);
+						Result r = new Result(ht, ourName);
+						if (r.date != null)
+							stone.reported = true;
+						stone.Resolve(r.first);
+						result = true;
+					}
+				} catch (Exception exc) {
+					/* Job failed, but we still have to exit job state */
+					Logging.LogException(exc);
+				}
+				cb.Invoke(result);
+			};
+			client.DownloadStringAsync(Page("/completed", "game={0}&player={1}&year={2:D}&day={3:D}&contract={4}",
+							inGame, ourName, stone.completed.year, stone.completed.day, stone.name));
+			return client.CancelAsync;
+		}
+
+		public CancelDelegate Resolve(List<RISMilestone> stones, ResultCallback cb)
+		{
+			WebClient client = new WebClient();
+			CancelDelegate cd = () => {};
+			RISMilestone stone = stones[0];
+			stones.RemoveAt(0);
+			Logging.LogFormat("Resolving {0}", stone.name);
+			client.DownloadStringCompleted += (object sender, DownloadStringCompletedEventArgs e) => {
+				bool result = false;
+				try {
+					if (e.Cancelled) {
+						Logging.Log("Resolve(Sync) cancelled");
+					} else if (e.Error != null) {
+						Logging.LogException(e.Error);
+					} else {
+						string json = e.Result;
+						Logging.Log("Resolve: " + json);
+						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						checkError(ht);
+						Result r = new Result(ht, ourName);
+						stone.Resolve(r.first);
+						result = true;
+					}
+				} catch (Exception exc) {
+					/* Job failed, but we still have to exit job state */
+					Logging.LogException(exc);
+				}
+				if (result && stones.Count > 0) {
+					cd += Resolve(stones, cb);
+					return;
+				}
+				cb.Invoke(result);
+			};
+			client.DownloadStringAsync(Page("/result", "game={0}&contract={1}", inGame, stone.name));
+			cd += client.CancelAsync;
+			return cd;
+		}
+	}
+
+	public class RISMilestone
+	{
+	        public string name, ccName;
+	        public double rewardFunds;
+	        public YDate completed = null;
+	        public bool reported = false;
+	        public Result.First result = Result.First.UNKNOWN;
+	        public RISMilestone(ConfigNode cn)
+	        {
+	                name = cn.GetValue("name");
+	                ccName = cn.GetValue("ccName");
+	                rewardFunds = double.Parse(cn.GetValue("rewardFunds"));
+	        }
+	        public void Resolve(Result.First r)
+	        {
+			if (r == Result.First.UNKNOWN)
+				return;
+			result = r;
+			if (r != Result.First.FIRST)
+				return;
+			if (Funding.Instance == null) {
+				Logging.Log("No Funding.Instance!  Are we not in a career?");
+				return;
+			}
+			Funding.Instance.AddFunds(rewardFunds, TransactionReasons.ContractReward);
+			string msg = String.Format("Awarded {0} funds for being first to complete {1}", rewardFunds, name);
+			Logging.Log(msg);
+			ScreenMessages.PostScreenMessage(msg);
+	        }
+	        public void Save(ConfigNode node)
+	        {
+	                node.AddValue("year", completed.year);
+	                node.AddValue("day", completed.day);
+	                node.AddValue("reported", reported);
+	                node.AddValue("result", (int)result);
+	        }
+	        private void Reset()
+	        {
+	                completed = null;
+	                reported = false;
+	                result = Result.First.UNKNOWN;
+	        }
+	        public void Load(ConfigNode node)
+	        {
+			if (node == null) {
+				Reset();
+				return;
+			}
+			if (node.HasValue("year") && node.HasValue("day")) {
+				completed = new YDate(node);
+			}
+			if (node.HasValue("reported"))
+				reported = bool.Parse(node.GetValue("reported"));
+			if (node.HasValue("result"))
+				result = (Result.First)int.Parse(node.GetValue("result"));
+	        }
+	}
+	public class ContractMonitor
+	{
+	        public List <RISMilestone> stones = new List<RISMilestone>();
+	        public ContractMonitor()
+	        {
+			foreach (ConfigNode cn in GameDatabase.Instance.GetConfigNodes("RISMilestone")) {
+				RISMilestone stone = new RISMilestone(cn);
+				stones.Add(stone);
+			}
+	        }
+		public RISMilestone CheckAll()
+		{
+			foreach (RISMilestone stone in stones) {
+				if (stone.completed == null)
+					CheckCompletion(stone);
+				if (stone.completed != null && !stone.reported)
+					return stone;
+			}
+			return null;
+		}
+		public List<RISMilestone> ToResolve()
+		{
+			List<RISMilestone> list = new List<RISMilestone>();
+			foreach (RISMilestone stone in stones) {
+				if (stone.completed != null && stone.result == Result.First.UNKNOWN)
+					list.Add(stone);
+			}
+			return list;
+		}
+		public void CheckCompletion(RISMilestone stone)
+		{
+			ContractConfigurator.ContractType type = ContractConfigurator.ContractType.GetContractType(stone.ccName);
+			if (type == null) {
+				Logging.LogWarningFormat("Failed to get CC Type {0} for Milestone {1}", stone.ccName, stone.name);
+				return;
+			}
+			if (type.ActualCompletions() > 0) {
+				stone.completed = new YDate(Planetarium.GetUniversalTime());
+			}
+		}
+		public void Save(ConfigNode node)
+		{
+			foreach (RISMilestone stone in stones) {
+				if (stone.completed != null) {
+					ConfigNode sn = node.AddNode(stone.name);
+					stone.Save(sn);
+				}
+			}
+		}
+		public void Load(ConfigNode node)
+		{
+			foreach (RISMilestone stone in stones) {
+				stone.Load(node.GetNode(stone.name));
+			}
+		}
 	}
 
 	[KSPAddon(KSPAddon.Startup.AllGameScenes, false)]
 	public class RISCore : MonoBehaviour
 	{
 		public static RISCore Instance { get; protected set; }
+		public ContractMonitor monitor = new ContractMonitor();
 		public Server server = new Server();
 		private ApplicationLauncherButton button;
 		private UI.MasterWindow masterWindow;
@@ -340,6 +592,7 @@ namespace ksp_ris
 			masterWindow = new ksp_ris.UI.MasterWindow(server);
 			if (ScenarioRIS.Instance != null)
 				Load(ScenarioRIS.Instance.node);
+			server.monitor = monitor;
 			Logging.Log("RISCore loaded successfully.");
 		}
 
@@ -364,6 +617,8 @@ namespace ksp_ris
 
 		private void OnGuiAppLauncherReady()
 		{
+			if (HighLogic.CurrentGame.Mode != global::Game.Modes.CAREER)
+				return;
 			try {
 				button = ApplicationLauncher.Instance.AddModApplication(
 					masterWindow.Show,
@@ -407,12 +662,16 @@ namespace ksp_ris
 		{
 			ConfigNode sn = node.AddNode("server");
 			server.Save(sn);
+			ConfigNode mn = node.AddNode("monitor");
+			monitor.Save(mn);
 		}
 
 		public void Load(ConfigNode node)
 		{
 			if (node.HasNode("server"))
 				server.Load(node.GetNode("server"));
+			if (node.HasNode("monitor"))
+				monitor.Load(node.GetNode("monitor"));
 		}
 	}
 

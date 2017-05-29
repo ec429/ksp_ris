@@ -37,6 +37,10 @@
       <HintPath>..\..\..\Downloads\KSP_linux_mods\KSP_real_122\KSP_Data\Managed\UnityEngine.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="ContractConfigurator">
+      <HintPath>..\..\..\ksp\KSP_linux\GameData\ContractConfigurator\ContractConfigurator.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
