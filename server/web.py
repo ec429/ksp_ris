@@ -24,6 +24,11 @@ th,td { border: 1px solid gray; }
 
 games = {}
 
+class Failed(Exception):
+    def __init__(self, msg, code=None):
+        self.msg = msg
+        self.code = code
+
 class Page(resource.Resource):
     """Abstract base class for pages with both data and human-readable forms."""
     isLeaf = True
@@ -39,13 +44,19 @@ class Page(resource.Resource):
                     del request.args[k]
     def render_GET(self, request):
         self.flatten_args(request)
-        e = self.validate(**request.args)
-        if e:
-            return self.error(request, e)
+        try:
+            self.validate(**request.args)
+        except Failed as e:
+            return self.error(request, e.msg, e.code)
+        except Exception as e:
+            return self.error(request, repr(e))
         if request.args.get('json'):
-            d = self.data(**request.args)
-            request.setHeader("content-type", "application/json")
-            return json.dumps(d)
+            try:
+                d = self.data(**request.args)
+                request.setHeader("content-type", "application/json")
+                return json.dumps(d)
+            except Exception as e:
+                return self.error(request, repr(e))
         page = t.html[t.head[t.title['KSP Race Into Space server'],
                              t.link(rel='stylesheet', href='main.css')],
                       t.body[self.content(**request.args)]]
@@ -71,7 +82,7 @@ class Page(resource.Resource):
         return flatten(page)
     def query_string(self, **kwargs):
         return '?' + '&'.join('%s=%s' % (k, urllib.quote_plus(v))
-                              for k,v in kwargs.items())
+                              for k,v in kwargs.items() if v is not None)
 
 class Index(Page):
     def data(self, **kwargs):
@@ -91,10 +102,7 @@ class Index(Page):
                         t.td(colspan=2)[t.input(type='submit', value='New')]]])
         yield t.table[header, rows]
 
-class ActionFailed(Exception):
-    def __init__(self, msg, code=None):
-        self.msg = msg
-        self.code = code
+class ActionFailed(Failed): pass
 
 class Action(Page):
     def render_GET(self, request):
@@ -120,15 +128,15 @@ class NewGame(Action):
             raise ActionFailed("Game name may not contain '/'.", EINVAL)
         games[name] = ris.Game(name)
         games[name].save()
-        return '/game' + self.query_string(name=name)
+        return '/game' + self.query_string(name=name, json=kwargs.get('json'))
 
 class Game(Page):
     def validate(self, **kwargs):
         name = kwargs.get('name')
         if not name:
-            return "No name specified."
+            raise Failed("No name specified.", EINVAL)
         if name not in games:
-            return "No such game '%s'." % (name,)
+            raise Failed("No such game '%s'." % (name,), ENOENT)
     def data(self, name, **kwargs):
         return games[name].dict
     def content(self, name, **kwargs):
@@ -136,14 +144,20 @@ class Game(Page):
         yield t.h1["Game: ", name]
         yield t.h2["Min. Date: ", str(game.mindate)]
         yield t.h2["Players"]
-        header = t.tr[t.th["Name"], t.th["Date"], t.th]
-        rows = [t.tr[t.td[n], t.td[str(game.players[n].date)],
-                     t.td['Leader' if game.players[n].leader else []]]
+        header = t.tr[t.th["Name"], t.th["Date"], t.th, t.th]
+        rows = [t.form(method='GET', action='/part')[t.tr[
+                     t.td[n], t.td[str(game.players[n].date)],
+                     t.td['Leader' if game.players[n].leader else []],
+                     t.td[t.input(type='hidden', name='game', value=name),
+                          t.input(type='hidden', name='name', value=n),
+                          t.input(type='submit', value='Remove')],
+                     ]]
                 for n in sorted(game.players)]
         rows.append(t.form(method='GET', action='/join')[
                 t.input(type='hidden', name='game', value=name),
                 t.tr[t.td[t.input(type='text', name='name')],
-                     t.td(colspan=2)[t.input(type='submit', value='New')]]])
+                     t.td(colspan=2),
+                     t.td[t.input(type='submit', value='New')]]])
         yield t.table[header, rows]
 
 class Join(Action):
@@ -162,7 +176,25 @@ class Join(Action):
                             EEXIST)
         game.join(name)
         game.save()
-        return '/game' + self.query_string(name=gname)
+        return '/game' + self.query_string(name=gname, json=kwargs.get('json'))
+
+class Part(Action):
+    def act(self, **kwargs):
+        gname = kwargs.get('game')
+        if not gname:
+            raise ActionFailed("No game name specified.", EINVAL)
+        if gname not in games:
+            raise ActionFailed("No such game '%s'." % (gname,), ENOENT)
+        game = games[gname]
+        name = kwargs.get('name')
+        if not name:
+            raise ActionFailed("No player name specified.", EINVAL)
+        if name not in game.players:
+            raise ActionFailed("There is no player named '%s'." % (name,),
+                               ENOENT)
+        game.part(name)
+        game.save()
+        return '/game' + self.query_string(name=gname, json=kwargs.get('json'))
 
 root = resource.Resource()
 root.putChild('', Index())
@@ -171,6 +203,7 @@ root.putChild('main.css', static.Data(main_css, 'text/css'))
 root.putChild('newgame', NewGame())
 root.putChild('game', Game())
 root.putChild('join', Join())
+root.putChild('part', Part())
 
 def parse_args():
     x = optparse.OptionParser()

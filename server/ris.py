@@ -109,6 +109,16 @@ class Game(object):
     def join(self, player):
         assert player not in self.players, player
         self.players[player] = Player(player)
+    def part(self, player):
+        assert player in self.players, player
+        p = self.players[player]
+        for contract in self.contracts.values():
+            contract.date.pop(p, None)
+            contract.results.pop(p, None)
+        del self.players[player]
+        # The removal of that player might have advanced our mindate.  It also
+        # might cause some unintuitive contract behaviour
+        self.update()
     def update(self):
         if self.mindate <= self.oldmindate:
             return

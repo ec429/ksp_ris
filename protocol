@@ -46,6 +46,13 @@ Required inputs: game, name.
 Semantics: Add a player named <name> to <game>.
 Outputs: <redirect to /game>
 
+Leave Game
+---------
+/part
+Required inputs: game, name.
+Semantics: Remove the player named <name> from <game>.
+Outputs: <redirect to /game>
+
 Synchronise
 -----------
 /sync
