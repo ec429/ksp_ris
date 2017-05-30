@@ -485,7 +485,10 @@ namespace ksp_ris
 			Funding.Instance.AddFunds(rewardFunds, TransactionReasons.ContractReward);
 			string msg = String.Format("Awarded {0} funds for being first to complete {1}", rewardFunds, name);
 			Logging.Log(msg);
-			ScreenMessages.PostScreenMessage(msg);
+			MessageSystem.Instance.AddMessage(new MessageSystem.Message(
+						"Race Into Space", msg,
+						MessageSystemButton.MessageButtonColor.GREEN,
+						MessageSystemButton.ButtonIcons.ACHIEVE));
 	        }
 	        public void Save(ConfigNode node)
 	        {
