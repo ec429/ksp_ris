@@ -128,6 +128,9 @@ class Game(object):
                for contract in self.contracts.values()
                if contract.firstdate <= self.mindate and not contract.results]
         for (d,c) in sorted(new):
+            if not c.date:
+                self.contracts.pop(c.name, None)
+                continue
             leaders = c.update(d)
             for p in self.players.values():
                 p.leader = p in leaders
