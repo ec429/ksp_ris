@@ -60,8 +60,11 @@ class Contract(object):
         if player not in self.date:
             # shouldn't happen
             return self.F_UNKNOWN
-        if self.results:
-            return self.results.get(player, self.F_NOT_FIRST)
+        if player in self.results:
+            return self.results[player]
+        if self.firstdate < self.date[player]:
+            # someone beat us already
+            return self.F_NOT_FIRST
         return self.F_UNKNOWN
     def __str__(self):
         return self.name
