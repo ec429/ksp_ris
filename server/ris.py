@@ -121,12 +121,20 @@ class Game(object):
         # The removal of that player might have advanced our mindate.  It also
         # might cause some unintuitive contract behaviour
         self.update()
+    def contract_check(self, contract):
+        if not self.players:
+            return False
+        left = [p for p in self.players.values() if p not in contract.date]
+        if not left:
+            return True
+        mindate = min(player.date for player in left)
+        return mindate > contract.firstdate
     def update(self):
         if self.mindate < self.oldmindate:
             return
         new = [(contract.firstdate, contract)
                for contract in self.contracts.values()
-               if contract.firstdate <= self.mindate and not contract.results]
+               if self.contract_check(contract) and not contract.results]
         for (d,c) in sorted(new):
             if not c.date:
                 self.contracts.pop(c.name, None)
@@ -190,6 +198,11 @@ def test():
     print g.dict
     print "P1 FS"
     g.complete('FirstSatellite', 'P1', Date(1, 3))
+    g.sync('P1', Date(1, 3))
+    print g.results('FirstSatellite')
+    print g.dict
+    print "P2 sync"
+    g.sync('P2', Date(1, 4))
     print g.results('FirstSatellite')
     print g.dict
     print "P2 FS"
@@ -197,8 +210,13 @@ def test():
     print g.results('FirstSatellite')
     print g.dict
     print "P2 CO"
-    g.complete('CrewedOrbit', 'P2', Date(1, 6))
+    g.complete('CrewedOrbit', 'P2', Date(1, 5))
+    g.sync('P2', Date(1, 5))
     print g.results('CrewedOrbit')
+    print "P1 sync"
+    g.sync('P1', Date(1, 5))
+    print g.results('CrewedOrbit')
+    print g.dict
     print "P1 CO"
     g.complete('CrewedOrbit', 'P1', Date(1, 5))
     print g.results('CrewedOrbit')
