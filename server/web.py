@@ -166,7 +166,10 @@ class Game(Page):
         yield t.h2["Players"]
         header = t.tr[t.th["Name"], t.th["Date"], t.th, t.th]
         rows = [t.form(method='GET', action='/part')[t.tr[
-                     t.td[n], t.td[str(game.players[n].date)],
+                     t.td[t.a(href="/player" +
+                              self.query_string(game=name, name=n)
+                              )[n]],
+                     t.td[str(game.players[n].date)],
                      t.td['Leader' if game.players[n].leader else []],
                      t.td[t.input(type='hidden', name='game', value=name),
                           t.input(type='hidden', name='name', value=n),
@@ -183,6 +186,43 @@ class Game(Page):
         yield t.ul[[t.li[t.a(href="/result" + self.query_string(game=name,
                                                                 contract=n))[n]]
                     for n in game.contracts]]
+
+class Player(Page):
+    def validate(self, **kwargs):
+        name = kwargs.get('game')
+        if not name:
+            raise Failed("No game specified.", EINVAL)
+        if name not in games:
+            raise Failed("No such game '%s'." % (name,), ENOENT)
+        game = games[name]
+        pname = kwargs.get('name')
+        if not pname:
+            raise Failed("No player specified.", EINVAL)
+        if pname not in game.players:
+            raise Failed("No such player '%s'." % (pname,), ENOENT)
+    def data(self, game, name, **kwargs):
+        game = games[game]
+        player = game.players[name]
+        return dict((contract.name,{'date': contract.date[player],
+                                    'first': contract.first(player)})
+                    for contract in game.contracts.values()
+                    if player in contract.date)
+    def content(self, game, name, **kwargs):
+        game = games[game]
+        player = game.players[name]
+        yield t.h1["Player: ", player.name]
+        yield t.h2["Date: ", str(player.date)]
+        if player.leader:
+            yield t.h2["Has Leader flag"]
+        contracts = [c for c in game.contracts.values() if player in c.date]
+        header = t.tr[t.th["Contract"], t.th["Date"], t.th["Result"]]
+        rows = [t.tr[t.td[t.a(href="/result" +
+                              self.query_string(game=game.name, contract=c.name)
+                              )[c.name]],
+                     t.td[str(c.date[player])],
+                     t.td[c.first(player)]]
+                for c in sorted(contracts, key=lambda c:c.date[player])]
+        yield t.table[header, rows]
 
 class Result(Page):
     def validate(self, **kwargs):
@@ -206,10 +246,12 @@ class Result(Page):
         yield t.h2["Firstdate: ", str(contract.firstdate)]
         yield t.h2["Results"]
         header = t.tr[t.th["Player"], t.th["Date"], t.th["Result"]]
-        rows = [t.tr[t.td[p.name],
+        rows = [t.tr[t.td[t.a(href="/player" +
+                              self.query_string(game=game.name, name=p.name)
+                              )[p.name]],
                      t.td[str(contract.date[p])],
                      t.td[contract.first(p)]]
-                for p in contract.date]
+                for p in sorted(contract.date, key=lambda p:contract.date[p])]
         yield t.table[header, rows]
 
 class Join(Action):
@@ -309,6 +351,7 @@ root.putChild('game', Game())
 root.putChild('join', Join())
 root.putChild('part', Part())
 root.putChild('sync', Sync())
+root.putChild('player', Player())
 root.putChild('result', Result())
 root.putChild('completed', Completed())
 
