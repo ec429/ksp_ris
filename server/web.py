@@ -209,7 +209,7 @@ class Result(Page):
         rows = [t.tr[t.td[p.name],
                      t.td[str(contract.date[p])],
                      t.td[contract.first(p)]]
-                for p in contract.date]
+                for p in sorted(contract.date, key=lambda p:contract.date[p])]
         yield t.table[header, rows]
 
 class Join(Action):
