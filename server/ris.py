@@ -69,6 +69,11 @@ class Contract(object):
     def __str__(self):
         return self.name
     @property
+    def save_dict(self):
+        if self.results:
+            return self.dict
+        return dict((p.name, {'date': self.date[p].dict}) for p in self.date)
+    @property
     def dict(self):
         return dict((p.name, {'date': self.date[p].dict,
                               'first': self.first(p)})
@@ -78,7 +83,7 @@ class Contract(object):
         c = cls(name)
         c.date = dict((players[k],Date.load(v['date'])) for k,v in d.items())
         c.results = dict((players[k],v['first']) for k,v in d.items()
-                         if v['first'] != cls.F_UNKNOWN)
+                         if v.get('first', cls.F_UNKNOWN) != cls.F_UNKNOWN)
         return c
 
 class Player(object):
@@ -173,7 +178,8 @@ class Game(object):
     def save_dict(self):
         return {'oldmindate': self.oldmindate.dict,
                 'players': dict((k,v.dict) for k,v in self.players.items()),
-                'contracts': dict((k,v.dict) for k,v in self.contracts.items())}
+                'contracts': dict((k,v.save_dict)
+                                  for k,v in self.contracts.items())}
     def save(self):
         # XXX this will trash the save if we crash!
         with open(os.path.join('games', self.name), "w") as f:
