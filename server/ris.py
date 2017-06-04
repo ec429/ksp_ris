@@ -111,6 +111,7 @@ class Game(object):
         self.players = {}
         self.contracts = {}
         self.oldmindate = ZERO_DATE
+        self.locked = False
     @property
     def mindate(self):
         if not self.players:
@@ -179,7 +180,8 @@ class Game(object):
         return {'oldmindate': self.oldmindate.dict,
                 'players': dict((k,v.dict) for k,v in self.players.items()),
                 'contracts': dict((k,v.save_dict)
-                                  for k,v in self.contracts.items())}
+                                  for k,v in self.contracts.items()),
+                'locked': self.locked}
     def save(self):
         # XXX this will trash the save if we crash!
         with open(os.path.join('games', self.name), "w") as f:
@@ -195,6 +197,7 @@ class Game(object):
         g.players = dict((k,Player.load(k, v)) for k,v in d['players'].items())
         g.contracts = dict((k,Contract.load(k, v, g.players))
                            for k,v in d['contracts'].items())
+        g.locked = d.get('locked', False)
         return g
 
 def test():

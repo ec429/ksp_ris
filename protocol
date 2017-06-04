@@ -12,6 +12,7 @@ Pages with no "Semantics" section are pure reads.
 On error, a page will, instead of its usual outputs, return
     {'err': some_error_message, 'code': some_optional_error_code}
  The following error codes are defined:
+    1   Not permitted; attempted a metadata change to a locked game.
     2   Item not found; a lookup by name failed.
     17  Already exists; tried to create using a name that was already in use.
     22  Invalid argument; an input was missing, had the wrong type, or was
@@ -46,6 +47,13 @@ Outputs: {'mindate': game.mindate.dict,
           'players': {player.name: {'date': player.date,
                                     'leader': player.leader}
                       for player in game.players}
+
+Lockout Changes
+---------------
+/lock
+Required inputs: game.
+Semantics: Prevent further joins or parts from <game>.
+Outputs: <redirect to /game>
 
 Join Game
 ---------
