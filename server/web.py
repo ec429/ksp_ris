@@ -182,10 +182,18 @@ class Game(Page):
                      t.td(colspan=2),
                      t.td[t.input(type='submit', value='New')]]])
         yield t.table[header, rows]
+        def shortresult(contract):
+            front = [p for p in contract.date
+                     if contract.date[p] == contract.firstdate]
+            text = ['%s, %s, %s'%(p.name, contract.date[p], contract.first(p))
+                    for p in front]
+            return '(%s)'%('; '.join(text))
         yield t.h2["Contracts"]
         yield t.ul[[t.li[t.a(href="/result" + self.query_string(game=name,
-                                                                contract=n))[n]]
-                    for n in game.contracts]]
+                                                                contract=n))[n],
+                         ': ', shortresult(game.contracts[n])]
+                    for n in sorted(game.contracts,
+                                    key=lambda n:game.contracts[n].firstdate)]]
 
 class Player(Page):
     def validate(self, **kwargs):
