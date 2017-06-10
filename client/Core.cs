@@ -208,6 +208,7 @@ namespace ksp_ris
 
 		public CancelDelegate ListGames(ResultCallback cb)
 		{
+			KerbalMonitor.CountDeadKerbals();
 			WebClient client = new WebClient();
 			client.DownloadStringCompleted += (object sender, DownloadStringCompletedEventArgs e) => {
 				bool result = false;
@@ -382,7 +383,8 @@ namespace ksp_ris
 				cb.Invoke(result);
 			};
 			YDate date = new YDate(Planetarium.GetUniversalTime());
-			client.DownloadStringAsync(Page("/sync", "game={0}&player={1}&year={2:D}&day={3:D}", inGame, ourName, date.year, date.day));
+			int kia = KerbalMonitor.CountDeadKerbals();
+			client.DownloadStringAsync(Page("/sync", "game={0}&player={1}&year={2:D}&day={3:D}&kia={4:D}", inGame, ourName, date.year, date.day, kia));
 			return client.CancelAsync;
 		}
 
@@ -517,6 +519,13 @@ namespace ksp_ris
 			if (node.HasValue("result"))
 				result = (Result.First)int.Parse(node.GetValue("result"));
 	        }
+	}
+	public abstract class KerbalMonitor
+	{
+		public static int CountDeadKerbals()
+		{
+			return HighLogic.CurrentGame.CrewRoster.GetKIACrewCount();
+		}
 	}
 	public class ContractMonitor
 	{
