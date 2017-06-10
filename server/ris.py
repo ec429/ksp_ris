@@ -91,18 +91,22 @@ class Player(object):
         self.name = name
         self.date = ZERO_DATE
         self.leader = False
-    def sync(self, date):
+        self.kia = 0
+    def sync(self, date, kia=None):
         self.date = max(self.date, date)
+        if kia is not None:
+            self.kia = max(self.kia, kia)
     def __str__(self):
         return self.name
     @property
     def dict(self):
-        return {'date': self.date.dict, 'leader': self.leader}
+        return {'date': self.date.dict, 'leader': self.leader, 'kia': self.kia}
     @classmethod
     def load(cls, name, d):
         p = cls(name)
         p.date = Date.load(d['date'])
         p.leader = d['leader']
+        p.kia = d.get('kia', 0)
         return p
 
 class Game(object):
@@ -111,6 +115,7 @@ class Game(object):
         self.players = {}
         self.contracts = {}
         self.oldmindate = ZERO_DATE
+        self.locked = False
     @property
     def mindate(self):
         if not self.players:
@@ -151,9 +156,9 @@ class Game(object):
             for p in self.players.values():
                 p.leader = p in leaders
         self.oldmindate = self.mindate
-    def sync(self, player, date):
+    def sync(self, player, date, kia=None):
         assert player in self.players, player
-        self.players[player].sync(date)
+        self.players[player].sync(date, kia=kia)
         self.update()
     @property
     def dict(self):
@@ -179,7 +184,8 @@ class Game(object):
         return {'oldmindate': self.oldmindate.dict,
                 'players': dict((k,v.dict) for k,v in self.players.items()),
                 'contracts': dict((k,v.save_dict)
-                                  for k,v in self.contracts.items())}
+                                  for k,v in self.contracts.items()),
+                'locked': self.locked}
     def save(self):
         # XXX this will trash the save if we crash!
         with open(os.path.join('games', self.name), "w") as f:
@@ -195,6 +201,7 @@ class Game(object):
         g.players = dict((k,Player.load(k, v)) for k,v in d['players'].items())
         g.contracts = dict((k,Contract.load(k, v, g.players))
                            for k,v in d['contracts'].items())
+        g.locked = d.get('locked', False)
         return g
 
 def test():

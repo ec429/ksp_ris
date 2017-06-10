@@ -13,6 +13,7 @@ import ris
 
 # We cannot import errno, because the errno values aren't the same on all
 # platforms; we standardise on the Linux values for RIS protocol purposes
+EPERM = 1
 ENOENT = 2
 EEXIST = 17
 EINVAL = 22
@@ -21,6 +22,7 @@ ENOTEMPTY = 39
 main_css = """
 table { border: 1px solid; }
 th,td { border: 1px solid gray; }
+td.num { text-align: right; }
 """
 
 games = {}
@@ -98,8 +100,10 @@ class Index(Page):
                     t.td[t.a(href="/game" + self.query_string(name=n))[n]],
                     t.td[", ".join(games[n].players.keys())],
                     t.td[str(games[n].mindate)],
+                    t.td if games[n].locked else
                     t.td[t.input(type='hidden', name='game', value=n),
-                         t.input(type='submit', value='End')]]]
+                         t.input(type='submit', value='End')]
+                    ]]
                 for n in sorted(games)]
         rows.append(t.form(method='GET', action='/newgame')[t.tr[
                         t.td[t.input(type='text', name='name')],
@@ -143,6 +147,8 @@ class RmGame(Action):
         if name not in games:
             raise ActionFailed("There is no game named '%s'." % (name,), ENOENT)
         game = games[name]
+        if game.locked:
+            raise ActionFailed("Game is locked.", EPERM)
         if game.players:
             raise ActionFailed("Game '%s' has %d players." % (name, len(game.players)),
                                ENOTEMPTY)
@@ -164,13 +170,16 @@ class Game(Page):
         yield t.h1["Game: ", name]
         yield t.h2["Min. Date: ", str(game.mindate)]
         yield t.h2["Players"]
-        header = t.tr[t.th["Name"], t.th["Date"], t.th, t.th]
+        header = t.tr[t.th["Name"], t.th["Date"], t.th["Cem'y"], t.th,
+                      [] if game.locked else t.th]
         rows = [t.form(method='GET', action='/part')[t.tr[
                      t.td[t.a(href="/player" +
                               self.query_string(game=name, name=n)
                               )[n]],
                      t.td[str(game.players[n].date)],
+                     t.td(Class='num')[str(game.players[n].kia)],
                      t.td['Leader' if game.players[n].leader else []],
+                     [] if game.locked else
                      t.td[t.input(type='hidden', name='game', value=name),
                           t.input(type='hidden', name='name', value=n),
                           t.input(type='submit', value='Remove')],
@@ -180,7 +189,12 @@ class Game(Page):
                 t.input(type='hidden', name='game', value=name),
                 t.tr[t.td[t.input(type='text', name='name')],
                      t.td(colspan=2),
+                     [] if game.locked else
                      t.td[t.input(type='submit', value='New')]]])
+        if not game.locked:
+            yield t.form(method='GET', action='/lock')[
+                    t.input(type='hidden', name='game', value=name),
+                    t.input(type='submit', value='Lock')]
         yield t.table[header, rows]
         def shortresult(contract):
             front = [p for p in contract.date
@@ -220,6 +234,8 @@ class Player(Page):
         player = game.players[name]
         yield t.h1["Player: ", player.name]
         yield t.h2["Date: ", str(player.date)]
+        if player.kia:
+            yield t.h2["%d astronauts K.I.A." % (player.kia,)]
         if player.leader:
             yield t.h2["Has Leader flag"]
         contracts = [c for c in game.contracts.values() if player in c.date]
@@ -262,6 +278,18 @@ class Result(Page):
                 for p in sorted(contract.date, key=lambda p:contract.date[p])]
         yield t.table[header, rows]
 
+class Lock(Action):
+    def act(self, **kwargs):
+        gname = kwargs.get('game')
+        if not gname:
+            raise ActionFailed("No game name specified.", EINVAL)
+        if gname not in games:
+            raise ActionFailed("No such game '%s'." % (gname,), ENOENT)
+        game = games[gname]
+        game.locked = True
+        game.save()
+        return '/game' + self.query_string(name=gname, json=kwargs.get('json'))
+
 class Join(Action):
     def act(self, **kwargs):
         gname = kwargs.get('game')
@@ -270,6 +298,8 @@ class Join(Action):
         if gname not in games:
             raise ActionFailed("No such game '%s'." % (gname,), ENOENT)
         game = games[gname]
+        if game.locked:
+            raise ActionFailed("Game is locked.", EPERM)
         name = kwargs.get('name')
         if not name:
             raise ActionFailed("No player name specified.", EINVAL)
@@ -288,6 +318,8 @@ class Part(Action):
         if gname not in games:
             raise ActionFailed("No such game '%s'." % (gname,), ENOENT)
         game = games[gname]
+        if game.locked:
+            raise ActionFailed("Game is locked.", EPERM)
         name = kwargs.get('name')
         if not name:
             raise ActionFailed("No player name specified.", EINVAL)
@@ -318,7 +350,7 @@ class Sync(Action):
         day = kwargs.get('day')
         if not day:
             raise ActionFailed("No day specified.", EINVAL)
-        game.sync(pname, ris.Date(int(year), int(day)))
+        game.sync(pname, ris.Date(int(year), int(day)), kia=kwargs.get('kia'))
         game.save()
         return '/game' + self.query_string(name=gname, json=kwargs.get('json'))
 
@@ -356,6 +388,7 @@ root.putChild('main.css', static.Data(main_css, 'text/css'))
 root.putChild('newgame', NewGame())
 root.putChild('rmgame', RmGame())
 root.putChild('game', Game())
+root.putChild('lock', Lock())
 root.putChild('join', Join())
 root.putChild('part', Part())
 root.putChild('sync', Sync())
