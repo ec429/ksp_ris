@@ -22,6 +22,7 @@ ENOTEMPTY = 39
 main_css = """
 table { border: 1px solid; }
 th,td { border: 1px solid gray; }
+td.num { text-align: right; }
 """
 
 games = {}
@@ -169,13 +170,14 @@ class Game(Page):
         yield t.h1["Game: ", name]
         yield t.h2["Min. Date: ", str(game.mindate)]
         yield t.h2["Players"]
-        header = t.tr[t.th["Name"], t.th["Date"], t.th,
+        header = t.tr[t.th["Name"], t.th["Date"], t.th["Cem'y"], t.th,
                       [] if game.locked else t.th]
         rows = [t.form(method='GET', action='/part')[t.tr[
                      t.td[t.a(href="/player" +
                               self.query_string(game=name, name=n)
                               )[n]],
                      t.td[str(game.players[n].date)],
+                     t.td(Class='num')[str(game.players[n].kia)],
                      t.td['Leader' if game.players[n].leader else []],
                      [] if game.locked else
                      t.td[t.input(type='hidden', name='game', value=name),
@@ -232,6 +234,8 @@ class Player(Page):
         player = game.players[name]
         yield t.h1["Player: ", player.name]
         yield t.h2["Date: ", str(player.date)]
+        if player.kia:
+            yield t.h2["%d astronauts K.I.A." % (player.kia,)]
         if player.leader:
             yield t.h2["Has Leader flag"]
         contracts = [c for c in game.contracts.values() if player in c.date]
@@ -346,7 +350,7 @@ class Sync(Action):
         day = kwargs.get('day')
         if not day:
             raise ActionFailed("No day specified.", EINVAL)
-        game.sync(pname, ris.Date(int(year), int(day)))
+        game.sync(pname, ris.Date(int(year), int(day)), kia=kwargs.get('kia'))
         game.save()
         return '/game' + self.query_string(name=gname, json=kwargs.get('json'))
 

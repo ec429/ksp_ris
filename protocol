@@ -73,8 +73,10 @@ Synchronise
 -----------
 /sync
 Required inputs: game, player, year, day.
+Optional inputs: kia.
 Semantics: <player> has reached y<year>d<day>, and all completions before that
- date have already been notified.
+ date have already been notified.  There have been <kia> dead astronauts since
+ the start of the game.
 Outputs: <redirect to /game>
 
 Completion
