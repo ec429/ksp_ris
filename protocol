@@ -83,9 +83,12 @@ Completion
 ----------
 /completed
 Required inputs: game, player, contract, year, day.
+Optional inputs: tier.
 Semantics: In <game>, <player> has completed <contract> at y<year>d<day>.  This
  does *not* imply a sync (i.e. <player> having reached y<year>d<day>), as
- completions might not arrive in order.
+ completions might not arrive in order.  Contract is tier <tier> (typically 0,
+ or 10 for milestone groups); higher tiers take precedence if multiple
+ contracts are completed on the same day (for leader flag handling purposes).
 Outputs: <redirect to /result>
 
 Contract Result

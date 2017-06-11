@@ -350,7 +350,12 @@ class Sync(Action):
         day = kwargs.get('day')
         if not day:
             raise ActionFailed("No day specified.", EINVAL)
-        game.sync(pname, ris.Date(int(year), int(day)), kia=kwargs.get('kia'))
+        try:
+            kia = int(kwargs.get('kia', 0))
+        except ValueError:
+            raise ActionFailed("Bad 'kia' value '%s'." % (kwargs['kia'],),
+                               EINVAL)
+        game.sync(pname, ris.Date(int(year), int(day)), kia=kia)
         game.save()
         return '/game' + self.query_string(name=gname, json=kwargs.get('json'))
 
@@ -377,7 +382,14 @@ class Completed(Action):
         cname = kwargs.get('contract')
         if not cname:
             raise ActionFailed("No contract specified.", EINVAL)
-        game.complete(cname, pname, ris.Date(int(year), int(day)))
+        try:
+            tier = int(kwargs.get('tier', 0))
+        except ValueError:
+            raise ActionFailed("Bad 'tier' value '%s'." % (kwargs['tier'],),
+                               EINVAL)
+        game.complete(cname, pname, ris.Date(int(year), int(day)),
+                      tier=tier)
+        game.save()
         return '/result' + self.query_string(game=gname, contract=cname,
                                              json=kwargs.get('json'))
 

@@ -28,10 +28,11 @@ class Contract(object):
     F_NOT_FIRST  = 'not_first'
     F_WAS_LEADER = 'was_leader'
     F_FIRST      = 'first'
-    def __init__(self, name):
+    def __init__(self, name, tier=0):
         self.name = name
         self.date = {}
         self.results = {}
+        self.tier = tier
     def complete(self, player, date):
         if player not in self.date:
             self.date[player] = date
@@ -71,8 +72,13 @@ class Contract(object):
     @property
     def save_dict(self):
         if self.results:
-            return self.dict
-        return dict((p.name, {'date': self.date[p].dict}) for p in self.date)
+            return {'players': dict((p.name, {'date': self.date[p].dict,
+                                              'first': self.first(p)})
+                                    for p in self.date),
+                    'tier': self.tier}
+        return {'players': dict((p.name, {'date': self.date[p].dict})
+                                for p in self.date),
+                'tier': self.tier}
     @property
     def dict(self):
         return dict((p.name, {'date': self.date[p].dict,
@@ -80,7 +86,9 @@ class Contract(object):
                     for p in self.date)
     @classmethod
     def load(cls, name, d, players):
-        c = cls(name)
+        c = cls(name, tier=int(d.get('tier', '0')))
+        if 'players' in d:
+            d = d['players']
         c.date = dict((players[k],Date.load(v['date'])) for k,v in d.items())
         c.results = dict((players[k],v['first']) for k,v in d.items()
                          if v.get('first', cls.F_UNKNOWN) != cls.F_UNKNOWN)
@@ -106,7 +114,7 @@ class Player(object):
         p = cls(name)
         p.date = Date.load(d['date'])
         p.leader = d['leader']
-        p.kia = d.get('kia', 0)
+        p.kia = int(d.get('kia', '0'))
         return p
 
 class Game(object):
@@ -145,10 +153,10 @@ class Game(object):
     def update(self):
         if self.mindate < self.oldmindate:
             return
-        new = [(contract.firstdate, contract)
+        new = [(contract.firstdate, -contract.tier, contract)
                for contract in self.contracts.values()
                if self.contract_check(contract) and not contract.results]
-        for (d,c) in sorted(new):
+        for (d,t,c) in sorted(new):
             if not c.date:
                 self.contracts.pop(c.name, None)
                 continue
@@ -164,7 +172,7 @@ class Game(object):
     def dict(self):
         return {'mindate': self.mindate.dict,
                 'players': dict((k,v.dict) for k,v in self.players.items())}
-    def complete(self, contract, player, date):
+    def complete(self, contract, player, date, tier=0):
         assert player in self.players, player
         player = self.players[player]
         # If date < player.date, that means we already sync'd a future date.
@@ -172,9 +180,8 @@ class Game(object):
         # with the completion message.
         date = max(date, player.date)
         if contract not in self.contracts:
-            self.contracts[contract] = Contract(contract)
+            self.contracts[contract] = Contract(contract, tier=tier)
         self.contracts[contract].complete(player, date)
-        self.update()
     def results(self, contract):
         if contract not in self.contracts:
             return {}
