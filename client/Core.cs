@@ -2,6 +2,7 @@
 using System.Net;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using UnityEngine;
 using KSP.UI.Screens;
@@ -334,7 +335,7 @@ namespace ksp_ris
 
 		public CancelDelegate Sync(ResultCallback cb)
 		{
-			RISMilestone stone = monitor.CheckAll();
+			RISMilestoneBase stone = monitor.CheckAll();
 			CancelDelegate cd = () => {};
 			if (stone != null) {
 				cd += Report(stone, (bool ok) => {
@@ -347,7 +348,7 @@ namespace ksp_ris
 			}
 			cd += SyncTail((bool ok) => {
 				if (ok) {
-					List<RISMilestone> toResolve = monitor.ToResolve();
+					List<RISMilestoneBase> toResolve = monitor.ToResolve();
 					if (toResolve.Count > 0)
 						cd += Resolve(toResolve, cb);
 					else
@@ -388,7 +389,7 @@ namespace ksp_ris
 			return client.CancelAsync;
 		}
 
-		public CancelDelegate Report(RISMilestone stone, ResultCallback cb)
+		public CancelDelegate Report(RISMilestoneBase stone, ResultCallback cb)
 		{
 			WebClient client = new WebClient();
 			Logging.LogFormat("Reporting {0} completed at {1}", stone.name, stone.completed.ToString());
@@ -416,16 +417,16 @@ namespace ksp_ris
 				}
 				cb.Invoke(result);
 			};
-			client.DownloadStringAsync(Page("/completed", "game={0}&player={1}&year={2:D}&day={3:D}&contract={4}",
-							inGame, ourName, stone.completed.year, stone.completed.day, stone.name));
+			client.DownloadStringAsync(Page("/completed", "game={0}&player={1}&year={2:D}&day={3:D}&contract={4}&tier={5}",
+							inGame, ourName, stone.completed.year, stone.completed.day, stone.name, stone.tier));
 			return client.CancelAsync;
 		}
 
-		public CancelDelegate Resolve(List<RISMilestone> stones, ResultCallback cb)
+		public CancelDelegate Resolve(List<RISMilestoneBase> stones, ResultCallback cb)
 		{
 			WebClient client = new WebClient();
 			CancelDelegate cd = () => {};
-			RISMilestone stone = stones[0];
+			RISMilestoneBase stone = stones[0];
 			stones.RemoveAt(0);
 			Logging.LogFormat("Resolving {0}", stone.name);
 			client.DownloadStringCompleted += (object sender, DownloadStringCompletedEventArgs e) => {
@@ -460,19 +461,26 @@ namespace ksp_ris
 		}
 	}
 
-	public class RISMilestone
+	public abstract class RISMilestoneBase
 	{
-	        public string name, ccName;
+	        public string name;
 	        public double rewardFunds;
 	        public YDate completed = null;
 	        public bool reported = false;
+	        public int tier;
 	        public Result.First result = Result.First.UNKNOWN;
-	        public RISMilestone(ConfigNode cn)
+	        public RISMilestoneBase(ConfigNode cn, int defaultTier)
 	        {
-	                name = cn.GetValue("name");
-	                ccName = cn.GetValue("ccName");
-	                rewardFunds = double.Parse(cn.GetValue("rewardFunds"));
+			name = cn.GetValue("name");
+			rewardFunds = double.Parse(cn.GetValue("rewardFunds"));
+			if (cn.HasValue("tier"))
+				tier = int.Parse(cn.GetValue("tier"));
+			else
+				tier = defaultTier;
 	        }
+		public RISMilestoneBase(ConfigNode cn) : this(cn, -1)
+		{
+		}
 	        public void Resolve(Result.First r)
 	        {
 			if (r == Result.First.UNKNOWN)
@@ -518,8 +526,56 @@ namespace ksp_ris
 				reported = bool.Parse(node.GetValue("reported"));
 			if (node.HasValue("result"))
 				result = (Result.First)int.Parse(node.GetValue("result"));
-	        }
+		}
+	        protected YDate CheckCC(string ccName)
+	        {
+			ContractConfigurator.ContractType type = ContractConfigurator.ContractType.GetContractType(ccName);
+			if (type == null) {
+				Logging.LogWarningFormat("Failed to get CC Type {0} for Milestone {1}", ccName, name);
+				return null;
+			}
+			if (type.ActualCompletions() > 0) {
+				double UT = ContractConfigurator.ConfiguredContract.CompletedContracts.
+					Where(contract => contract.contractType == type && contract.ContractState == Contracts.Contract.State.Completed).
+					Min(contract => contract.DateFinished);
+				return new YDate(UT);
+			}
+			return null;
+		}
+		public abstract void Check();
 	}
+
+	public class RISMilestone : RISMilestoneBase
+	{
+		public string ccName;
+		public RISMilestone(ConfigNode cn) : base(cn, 0)
+		{
+			ccName = cn.GetValue("ccName");
+		}
+		public override void Check()
+		{
+			completed = CheckCC(ccName);
+		}
+	}
+
+	public class RISMilestoneGroup : RISMilestoneBase
+	{
+		/* Represents a group of 'equivalent' contracts; complete any contract to achieve the milestone */
+		public List<string> ccNames;
+		public RISMilestoneGroup(ConfigNode cn) : base(cn, 10)
+		{
+			ccNames = new List<string>(cn.GetValues("ccName"));
+		}
+		public override void Check()
+		{
+			foreach (string name in ccNames) {
+				completed = CheckCC(name);
+				if (completed != null)
+					return;
+			}
+		}
+	}
+
 	public abstract class KerbalMonitor
 	{
 		public static int CountDeadKerbals()
@@ -529,47 +585,40 @@ namespace ksp_ris
 	}
 	public class ContractMonitor
 	{
-	        public List <RISMilestone> stones = new List<RISMilestone>();
+	        public List <RISMilestoneBase> stones = new List<RISMilestoneBase>();
 	        public ContractMonitor()
 	        {
 			foreach (ConfigNode cn in GameDatabase.Instance.GetConfigNodes("RISMilestone")) {
 				RISMilestone stone = new RISMilestone(cn);
 				stones.Add(stone);
 			}
+			foreach (ConfigNode cn in GameDatabase.Instance.GetConfigNodes("RISMilestoneGroup")) {
+				RISMilestoneGroup stone = new RISMilestoneGroup(cn);
+				stones.Add(stone);
+			}
 	        }
-		public RISMilestone CheckAll()
+		public RISMilestoneBase CheckAll()
 		{
-			foreach (RISMilestone stone in stones) {
+			foreach (RISMilestoneBase stone in stones) {
 				if (stone.completed == null)
-					CheckCompletion(stone);
+					stone.Check();
 				if (stone.completed != null && !stone.reported)
 					return stone;
 			}
 			return null;
 		}
-		public List<RISMilestone> ToResolve()
+		public List<RISMilestoneBase> ToResolve()
 		{
-			List<RISMilestone> list = new List<RISMilestone>();
-			foreach (RISMilestone stone in stones) {
+			List<RISMilestoneBase> list = new List<RISMilestoneBase>();
+			foreach (RISMilestoneBase stone in stones) {
 				if (stone.completed != null && stone.result == Result.First.UNKNOWN)
 					list.Add(stone);
 			}
 			return list;
 		}
-		public void CheckCompletion(RISMilestone stone)
-		{
-			ContractConfigurator.ContractType type = ContractConfigurator.ContractType.GetContractType(stone.ccName);
-			if (type == null) {
-				Logging.LogWarningFormat("Failed to get CC Type {0} for Milestone {1}", stone.ccName, stone.name);
-				return;
-			}
-			if (type.ActualCompletions() > 0) {
-				stone.completed = new YDate(Planetarium.GetUniversalTime());
-			}
-		}
 		public void Save(ConfigNode node)
 		{
-			foreach (RISMilestone stone in stones) {
+			foreach (RISMilestoneBase stone in stones) {
 				if (stone.completed != null) {
 					ConfigNode sn = node.AddNode(stone.name);
 					stone.Save(sn);
@@ -578,7 +627,7 @@ namespace ksp_ris
 		}
 		public void Load(ConfigNode node)
 		{
-			foreach (RISMilestone stone in stones) {
+			foreach (RISMilestoneBase stone in stones) {
 				stone.Load(node.GetNode(stone.name));
 			}
 		}
