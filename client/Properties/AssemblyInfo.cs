@@ -10,14 +10,14 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration ("")]
 [assembly: AssemblyCompany ("")]
 [assembly: AssemblyProduct ("KSPRIS")]
-[assembly: AssemblyCopyright ("Copyright © 2017")]
+[assembly: AssemblyCopyright ("Copyright © 2017-20")]
 [assembly: AssemblyTrademark ("")]
 [assembly: AssemblyCulture ("")]
 
 [assembly: Guid("aaa18268-304c-4d1a-9cee-93d1223ed52c")]
 
 [assembly: AssemblyVersion("0.1")]
-[assembly: AssemblyFileVersion("0.1.3")]
+[assembly: AssemblyFileVersion("0.1.5")]
 
 // Use KSPAssembly to allow other DLLs to make this DLL a dependency in a
 // non-hacky way in KSP.  Format is (AssemblyProduct, major, minor), and it
