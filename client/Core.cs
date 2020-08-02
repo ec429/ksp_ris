@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using UnityEngine;
 using KSP.UI.Screens;
+using MiniJSON;
 
 namespace ksp_ris
 {
@@ -21,10 +22,10 @@ namespace ksp_ris
 			day = 1 + days % 365;
 		}
 
-		public YDate(Hashtable ht)
+		public YDate(Dictionary<string,object> ht)
 		{
-			this.year = (int)(double)ht["year"];
-		        this.day = (int)(double)ht["day"];
+			this.year = (int)(long)ht["year"];
+		        this.day = (int)(long)ht["day"];
 		}
 
 		public YDate(ConfigNode node)
@@ -61,11 +62,11 @@ namespace ksp_ris
 		public List<string> players;
 		public YDate mindate;
 
-		public GameListEntry(Hashtable ht)
+		public GameListEntry(Dictionary<string,object> ht)
 		{
-			mindate = new YDate(ht["mindate"] as Hashtable);
+			mindate = new YDate(ht["mindate"] as Dictionary<string,object>);
 		        players = new List<string>();
-		        foreach (object obj in ht["players"] as ArrayList) {
+		        foreach (object obj in ht["players"] as List<object>) {
 		                players.Add(obj as string);
 		        }
 		}
@@ -75,9 +76,9 @@ namespace ksp_ris
 	{
 		public YDate date;
 		public bool leader;
-		public Player(Hashtable ht)
+		public Player(Dictionary<string,object> ht)
 		{
-			date = new YDate(ht["date"] as Hashtable);
+			date = new YDate(ht["date"] as Dictionary<string,object>);
 			leader = (bool)ht["leader"];
 	        }
 	}
@@ -86,12 +87,12 @@ namespace ksp_ris
 	{
 	        public YDate mindate;
 	        public Dictionary<string, Player> players;
-	        public Game(Hashtable ht)
+	        public Game(Dictionary<string,object> ht)
 	        {
-	                mindate = new YDate(ht["mindate"] as Hashtable);
+	                mindate = new YDate(ht["mindate"] as Dictionary<string,object>);
 	                players = new Dictionary<string, Player>();
-	                foreach (DictionaryEntry de in ht["players"] as Hashtable) {
-	                        players.Add(de.Key.ToString(), new Player(de.Value as Hashtable));
+	                foreach (KeyValuePair<string,object> de in ht["players"] as Dictionary<string,object>) {
+	                        players.Add(de.Key.ToString(), new Player(de.Value as Dictionary<string,object>));
 	                }
 	        }
 	}
@@ -101,11 +102,11 @@ namespace ksp_ris
 		public YDate date;
 		public enum First { FIRST, WAS_LEADER, UNKNOWN, NOT_FIRST };
 		public First first;
-		public Result(Hashtable ht, string ourName)
+		public Result(Dictionary<string,object> ht, string ourName)
 		{
 			if (ht.ContainsKey(ourName)) {
-				Hashtable data = ht[ourName] as Hashtable;
-				date = new YDate(data["date"] as Hashtable);
+				Dictionary<string,object> data = ht[ourName] as Dictionary<string,object>;
+				date = new YDate(data["date"] as Dictionary<string,object>);
 				switch (data["first"] as string) {
 				case "first":
 					first = First.FIRST;
@@ -120,7 +121,7 @@ namespace ksp_ris
 					first = First.NOT_FIRST;
 					break;
 				default:
-					throw new Exception(String.Format("Bad 'first' value {0}", data["first"] as string));
+					throw new Exception(String.Format("Bad 'first' value {0}", data["first"]));
 				}
 			} else {
 				date = null;
@@ -198,12 +199,12 @@ namespace ksp_ris
 			}}
 		}
 
-		private void checkError(Hashtable ht)
+		private void checkError(Dictionary<string,object> ht)
 		{
-			if (!ht.Contains("err"))
+			if (!ht.ContainsKey("err"))
 				return;
-			if (ht.Contains("code"))
-				throw new Error(ht["err"] as string, (int)ht["code"]);
+			if (ht.ContainsKey("code"))
+				throw new Error(ht["err"] as string, (int)(long)ht["code"]);
 			throw new Error(ht["err"] as string);
 		}
 
@@ -221,11 +222,11 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("ListGames: " + json);
-						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
+						var ht = Json.Deserialize(json) as Dictionary<string,object>;
 						checkError(ht);
 						gameList = new Dictionary<string, GameListEntry>();
-						foreach (DictionaryEntry de in ht) {
-							gameList.Add(de.Key.ToString(), new GameListEntry(de.Value as Hashtable));
+						foreach (KeyValuePair<string,object> de in ht) {
+							gameList.Add(de.Key.ToString(), new GameListEntry(de.Value as Dictionary<string,object>));
 						}
 						Logging.LogFormat("Listed {0} games", gameList.Count);
 						result = true;
@@ -253,7 +254,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("JoinGame: " + json);
-						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
+						var ht = Json.Deserialize(json) as Dictionary<string,object>;
 						checkError(ht);
 						inGame = game;
 						ourName = name;
@@ -283,9 +284,9 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("PartGame: " + json);
-						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
-						if (ht.Contains("err")) {
-							if (ht.Contains("code") && (int)ht["code"] == ENOENT)
+						var ht = Json.Deserialize(json) as Dictionary<string,object>;
+						if (ht.ContainsKey("err")) {
+							if (ht.ContainsKey("code") && (int)(long)ht["code"] == ENOENT)
 								Logging.Log("Player was already parted");
 							else /* real error, let's throw */
 								checkError(ht);
@@ -318,7 +319,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("ReadGame: " + json);
-						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
+						var ht = Json.Deserialize(json) as Dictionary<string,object>;
 						checkError(ht);
 						game = new Game(ht);
 						result = true;
@@ -372,7 +373,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("Sync: " + json);
-						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
+						var ht = Json.Deserialize(json) as Dictionary<string,object>;
 						checkError(ht);
 						game = new Game(ht);
 						result = true;
@@ -403,7 +404,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("Report: " + json);
-						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
+						var ht = Json.Deserialize(json) as Dictionary<string,object>;
 						checkError(ht);
 						Result r = new Result(ht, ourName);
 						if (r.date != null)
@@ -439,7 +440,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("Resolve: " + json);
-						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
+						var ht = Json.Deserialize(json) as Dictionary<string,object>;
 						checkError(ht);
 						Result r = new Result(ht, ourName);
 						stone.Resolve(r.first);
