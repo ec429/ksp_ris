@@ -221,7 +221,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("ListGames: " + json);
-						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
 						checkError(ht);
 						gameList = new Dictionary<string, GameListEntry>();
 						foreach (DictionaryEntry de in ht) {
@@ -253,7 +253,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("JoinGame: " + json);
-						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
 						checkError(ht);
 						inGame = game;
 						ourName = name;
@@ -283,7 +283,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("PartGame: " + json);
-						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
 						if (ht.Contains("err")) {
 							if (ht.Contains("code") && (int)ht["code"] == ENOENT)
 								Logging.Log("Player was already parted");
@@ -318,7 +318,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("ReadGame: " + json);
-						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
 						checkError(ht);
 						game = new Game(ht);
 						result = true;
@@ -372,7 +372,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("Sync: " + json);
-						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
 						checkError(ht);
 						game = new Game(ht);
 						result = true;
@@ -403,7 +403,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("Report: " + json);
-						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
 						checkError(ht);
 						Result r = new Result(ht, ourName);
 						if (r.date != null)
@@ -439,7 +439,7 @@ namespace ksp_ris
 					} else {
 						string json = e.Result;
 						Logging.Log("Resolve: " + json);
-						Hashtable ht = MiniJSON.jsonDecode(json) as Hashtable;
+						Hashtable ht = JsonUtility.FromJson<Hashtable>(json);
 						checkError(ht);
 						Result r = new Result(ht, ourName);
 						stone.Resolve(r.first);
