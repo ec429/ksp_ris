@@ -45,6 +45,7 @@ class Page(resource.Resource):
                     request.args[k] = v[0]
                 elif not l:
                     del request.args[k]
+        request.args['_local'] = request.getClientIP() == '127.0.0.1'
     def render_GET(self, request):
         self.flatten_args(request)
         try:
@@ -100,7 +101,7 @@ class Index(Page):
                     t.td[t.a(href="/game" + self.query_string(name=n))[n]],
                     t.td[", ".join(games[n].players.keys())],
                     t.td[str(games[n].mindate)],
-                    t.td if games[n].locked else
+                    t.td if games[n].locked or not kwargs.get('_local') else
                     t.td[t.input(type='hidden', name='game', value=n),
                          t.input(type='submit', value='End')]
                     ]]
@@ -147,7 +148,7 @@ class RmGame(Action):
         if name not in games:
             raise ActionFailed("There is no game named '%s'." % (name,), ENOENT)
         game = games[name]
-        if game.locked:
+        if game.locked or not kwargs.get('_local'):
             raise ActionFailed("Game is locked.", EPERM)
         if game.players:
             raise ActionFailed("Game '%s' has %d players." % (name, len(game.players)),
@@ -167,6 +168,7 @@ class Game(Page):
         return games[name].dict
     def content(self, name, **kwargs):
         game = games[name]
+        admin = kwargs.get('_local') and not game.locked
         yield t.h1["Game: ", name]
         yield t.h2["Min. Date: ", str(game.mindate)]
         yield t.h2["Players"]
@@ -179,7 +181,7 @@ class Game(Page):
                      t.td[str(game.players[n].date)],
                      t.td(Class='num')[str(game.players[n].kia)],
                      t.td['Leader' if game.players[n].leader else []],
-                     [] if game.locked else
+                     [] if not admin else
                      t.td[t.input(type='hidden', name='game', value=name),
                           t.input(type='hidden', name='name', value=n),
                           t.input(type='submit', value='Remove')],
@@ -189,9 +191,9 @@ class Game(Page):
                 t.input(type='hidden', name='game', value=name),
                 t.tr[t.td[t.input(type='text', name='name')],
                      t.td(colspan=2),
-                     [] if game.locked else
+                     [] if not admin else
                      t.td[t.input(type='submit', value='New')]]])
-        if not game.locked:
+        if admin:
             yield t.form(method='GET', action='/lock')[
                     t.input(type='hidden', name='game', value=name),
                     t.input(type='submit', value='Lock')]
@@ -286,6 +288,8 @@ class Lock(Action):
         if gname not in games:
             raise ActionFailed("No such game '%s'." % (gname,), ENOENT)
         game = games[gname]
+        if not kwargs.get('_local'):
+            raise ActionFailed("You're not the server administrator.", EPERM)
         game.locked = True
         game.save()
         return '/game' + self.query_string(name=gname, json=kwargs.get('json'))
